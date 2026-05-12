@@ -10,3 +10,4 @@ def load_drone_configs():
 
     with open(path, "r") as f:
         return json.load(f)
+    # test
