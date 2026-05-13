@@ -7,23 +7,30 @@ class Drone:
     # --- config (chargée depuis JSON, immuable) ---
     id: str
     role: DroneRole
+    
     speed: float
+    max_force: float        # amplitude max du vecteur de correction par tick
+    mass: float             # inertie : plus c'est lourd, plus le virage est mou
+
     sensor_radius: float
     comm_radius: float
     battery_capacity: float
+    
 
     # --- état cinématique ---
     position: np.ndarray = field(default_factory=lambda: np.zeros(2))
     velocity: np.ndarray = field(default_factory=lambda: np.zeros(2))
 
     # --- mode opérationnel ---
-    mode: DroneMode = DroneMode.IDLE
+    mode: DroneMode = DroneMode.ACTIVE
+
 
     # --- dégradations continues [0.0 → 1.0] ---
     battery_level: float = 1.0       # 1 = pleine charge, 0 = vide
     jamming_level: float = 0.0       # 0 = aucun brouillage, 1 = totalement brouillé
     signal_quality: float = 1.0      # 0 = comm coupée, 1 = signal parfait
     sensor_efficiency: float = 1.0   # réduit par météo / terrain
+    
 
     # --- comms ---
     messages: list = field(default_factory=list)

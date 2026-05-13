@@ -1,11 +1,7 @@
 from enum import Enum, auto
 
 class DroneMode(Enum):
-    IDLE            = auto()
-    PATROLLING      = auto()
-    MOVING          = auto()
-    SCANNING        = auto()
-    RETURNING       = auto()
+    ACTIVE          = auto()
     EMERGENCY       = auto()
     DEAD            = auto()
 
