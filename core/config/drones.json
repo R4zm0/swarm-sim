@@ -1,27 +1,46 @@
 {
   "_base": {
+    "type": "default",
+    "display_name": "Drone",
     "speed": 10.0,
     "sensor_radius": 50.0,
     "comm_radius": 150.0,
-    "battery_capacity": 100.0
+    "battery_capacity": 100.0,
+    "max_force": 5.0,
+    "mass": 1.0
   },
 
-  "scout_light": {
+  "fpv": {
     "parent": "_base",
-    "role": "SCOUT",
-    "speed": 15.0,
-    "sensor_radius": 80.0
+    "display_name": "FPV Kamikaze",
+    "speed": 28.0,
+    "sensor_radius": 15.0,
+    "comm_radius": 80.0,
+    "battery_capacity": 20.0,
+    "max_force": 12.0,
+    "mass": 0.3
   },
 
-  "scout_heavy": {
-    "parent": "scout_light",
-    "speed": 10.0,
-    "battery_capacity": 180.0
-  },
-
-  "relay": {
+  "mavic_isr": {
     "parent": "_base",
-    "role": "RELAY",
-    "comm_radius": 500.0
+    "display_name": "Mavic ISR",
+    "speed": 12.0,
+    "sensor_radius": 120.0,
+    "comm_radius": 200.0,
+    "battery_capacity": 45.0,
+    "max_force": 4.0,
+    "mass": 0.9
+  },
+
+  "lancet": {
+    "parent": "_base",
+    "type": "loitering",
+    "display_name": "Lancet-3",
+    "speed": 18.0,
+    "sensor_radius": 80.0,
+    "comm_radius": 120.0,
+    "battery_capacity": 90.0,
+    "max_force": 8.0,
+    "mass": 5.0
   }
 }

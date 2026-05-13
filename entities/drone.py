@@ -1,13 +1,13 @@
 from dataclasses import dataclass, field
-from entities.types import DroneMode, DroneRole
+from entities.types import DroneMode
 import numpy as np
 
 @dataclass
 class Drone:
     # --- config (chargée depuis JSON, immuable) ---
     id: int # identifiant unique, assigné par le World à la création du drone
-
-    role: DroneRole # rôle opérationnel, determinera peut être le comportement du drone (ex: scout, carrier, relay) / plus une feature pour le futur, pour différencier les types de drones dans les configs et dans le code, et pouvoir faire des comportements spécifiques à chaque rôle
+    type: str # identifiant de type de drone, ex: scout_light, relay, carrier_heavy, par default c'est default pour l'instant c'est une spec pour le futur si on veut faire du polymorphisme de fonctions selon le type de drone
+    display_name: str # nom d'affichage, pour les logs et l'interface
     
     speed: float 
     max_force: float        # amplitude max du vecteur de correction par tick
@@ -23,7 +23,7 @@ class Drone:
     velocity: np.ndarray = field(default_factory=lambda: np.zeros(2))
 
     # --- mode opérationnel ---
-    mode: DroneMode = DroneMode.ACTIVE
+    mode: DroneMode = DroneMode.ACTIVE 
 
 
     # --- dégradations continues [0.0 → 1.0] ---

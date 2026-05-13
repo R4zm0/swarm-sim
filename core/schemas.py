@@ -13,10 +13,10 @@ et l'implémentations de nouvelles fonctions, on réduit l'erreur au futur et on
 """
 
 from pydantic import BaseModel, Field
-from entities.types import DroneRole
 
 class DroneConfig(BaseModel):
-    role:             DroneRole = DroneRole.SCOUT
+    type: str = Field(..., description="identifiant de type de drone, ex: scout_light, relay, carrier_heavy")
+    display_name: str = Field(..., description="nom d'affichage du drone, pour les logs et l'interface")
     speed:            float     = Field(10.0,  gt=0)
     sensor_radius:    float     = Field(50.0,  gt=0)
     comm_radius:      float     = Field(150.0, gt=0)
