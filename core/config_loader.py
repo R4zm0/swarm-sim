@@ -21,7 +21,7 @@ def _resolve(name: str, raw: dict) -> dict:
 def load_drone_configs() -> dict[str, DroneConfig]:
     """import toutes les configs de drones depuis le JSON, et les valide via Pydantic (DroneConfig) """
 
-    path = Path(__file__).resolve().parent.parent.parent / "config" / "drones.json"
+    path = Path(__file__).resolve().parent.parent / "config" / "drones.json"
 
     with open(path, "r") as f:
         raw = json.load(f)
