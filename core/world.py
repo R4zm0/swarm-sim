@@ -5,7 +5,6 @@ from entities.drone import Drone
 
 class World:
     def __init__(self):
-        self.drones = {}
         self.drones: dict[int, Drone] = {} # id → Drone
         self._next_id = 0 
         self.drone_configs = load_drone_configs()   # charge et valide les configs de drones depuis JSON

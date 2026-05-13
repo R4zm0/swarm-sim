@@ -7,21 +7,30 @@ import json
 from pathlib import Path
 from core.schemas import DroneConfig
 
-def _resolve(name: str, raw: dict) -> dict:
-    """Remonte récursivement la chaîne parent / enfant, s'arrête quand il n'y a plus de parent, et fusionne les configs (l'enfant écrase le parent)"""
+def _resolve(name: str, raw: dict, visited: set | None = None) -> dict:
+    """ remonte récursivement les parents d'une config, en appliquant les overrides, et en détectant les cycles éventuels parent -> enfant -> parent"""
+
+    if visited is None:
+        visited = set()
+    
+    if name in visited:
+        raise ValueError(f"Cycle détecté dans les configs : {visited} → {name}")
+    
+    visited.add(name)
     
     entry = raw[name].copy()
     parent_name = entry.pop("parent", None)
 
     if parent_name:
-        parent = _resolve(parent_name, raw)
-        return {**parent, **entry}   # l'enfant écrase le parent
+        parent = _resolve(parent_name, raw, visited)
+        return {**parent, **entry}
     return entry
+
 
 def load_drone_configs() -> dict[str, DroneConfig]:
     """import toutes les configs de drones depuis le JSON, et les valide via Pydantic (DroneConfig) """
 
-    path = Path(__file__).resolve().parent.parent / "config" / "drones.json"
+    path = Path(__file__).resolve().parent / "config" / "drones.json"
 
     with open(path, "r") as f:
         raw = json.load(f)
