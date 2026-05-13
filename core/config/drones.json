@@ -1,0 +1,27 @@
+{
+  "_base": {
+    "speed": 10.0,
+    "sensor_radius": 50.0,
+    "comm_radius": 150.0,
+    "battery_capacity": 100.0
+  },
+
+  "scout_light": {
+    "parent": "_base",
+    "role": "SCOUT",
+    "speed": 15.0,
+    "sensor_radius": 80.0
+  },
+
+  "scout_heavy": {
+    "parent": "scout_light",
+    "speed": 10.0,
+    "battery_capacity": 180.0
+  },
+
+  "relay": {
+    "parent": "_base",
+    "role": "RELAY",
+    "comm_radius": 500.0
+  }
+}

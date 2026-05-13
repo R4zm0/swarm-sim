@@ -5,14 +5,15 @@ import numpy as np
 @dataclass
 class Drone:
     # --- config (chargée depuis JSON, immuable) ---
-    id: str
-    role: DroneRole
+    id: int # identifiant unique, assigné par le World à la création du drone
+
+    role: DroneRole # rôle opérationnel, determinera peut être le comportement du drone (ex: scout, carrier, relay) / plus une feature pour le futur, pour différencier les types de drones dans les configs et dans le code, et pouvoir faire des comportements spécifiques à chaque rôle
     
-    speed: float
+    speed: float 
     max_force: float        # amplitude max du vecteur de correction par tick
     mass: float             # inertie : plus c'est lourd, plus le virage est mou
 
-    sensor_radius: float
+    sensor_radius: float 
     comm_radius: float
     battery_capacity: float
     
