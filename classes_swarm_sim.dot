@@ -1,0 +1,17 @@
+digraph "classes_swarm_sim" {
+rankdir=BT
+charset="utf-8"
+"swarm-sim.entities.drone.Drone" [color="black", fontcolor="black", label=<{Drone|battery_capacity : float<br ALIGN="LEFT"/>battery_level : float<br ALIGN="LEFT"/>comm_radius : float<br ALIGN="LEFT"/>display_name : str<br ALIGN="LEFT"/>effective_comm_radius : float<br ALIGN="LEFT"/>effective_sensor_radius : float<br ALIGN="LEFT"/>effective_speed : float<br ALIGN="LEFT"/>id : int<br ALIGN="LEFT"/>is_alive : bool<br ALIGN="LEFT"/>jamming_level : float<br ALIGN="LEFT"/>mass : float<br ALIGN="LEFT"/>max_force : float<br ALIGN="LEFT"/>messages : list<br ALIGN="LEFT"/>mode<br ALIGN="LEFT"/>position : ndarray<br ALIGN="LEFT"/>sensor_efficiency : float<br ALIGN="LEFT"/>sensor_radius : float<br ALIGN="LEFT"/>signal_quality : float<br ALIGN="LEFT"/>speed : float<br ALIGN="LEFT"/>type : str<br ALIGN="LEFT"/>velocity : ndarray<br ALIGN="LEFT"/>|}>, shape="record", style="solid"];
+"swarm-sim.core.schemas.DroneConfig" [color="black", fontcolor="black", label=<{DroneConfig|battery_capacity : float<br ALIGN="LEFT"/>comm_radius : float<br ALIGN="LEFT"/>display_name : str<br ALIGN="LEFT"/>mass : float<br ALIGN="LEFT"/>max_force : float<br ALIGN="LEFT"/>sensor_radius : float<br ALIGN="LEFT"/>speed : float<br ALIGN="LEFT"/>type : str<br ALIGN="LEFT"/>|}>, shape="record", style="solid"];
+"swarm-sim.entities.types.DroneMode" [color="black", fontcolor="black", label=<{DroneMode|name<br ALIGN="LEFT"/>|}>, shape="record", style="solid"];
+"swarm-sim.core.world.World" [color="black", fontcolor="black", label=<{World|drone_configs<br ALIGN="LEFT"/>drones : dict[int, Drone]<br ALIGN="LEFT"/>|add_drone(drone_type)<br ALIGN="LEFT"/>}>, shape="record", style="solid"];
+
+// World --composition--> Drone
+"swarm-sim.core.world.World" -> "swarm-sim.entities.drone.Drone" [arrowhead="diamond", arrowtail="none", label="drones", style="solid"];
+
+// World --association--> DroneConfig
+"swarm-sim.core.world.World" -> "swarm-sim.core.schemas.DroneConfig" [arrowhead="open", arrowtail="none", label="drone_configs", style="dashed"];
+
+// Drone --association--> DroneMode
+"swarm-sim.entities.drone.Drone" -> "swarm-sim.entities.types.DroneMode" [arrowhead="open", arrowtail="none", label="mode", style="dashed"];
+}

@@ -1,0 +1,33 @@
+digraph "packages_swarm_sim" {
+rankdir=BT
+charset="utf-8"
+"swarm-sim" [color="black", label=<swarm-sim>, shape="box", style="solid"];
+"swarm-sim.core" [color="black", label=<swarm-sim.core>, shape="box", style="solid"];
+"swarm-sim.core.config" [color="black", label=<swarm-sim.core.config>, shape="box", style="solid"];
+"swarm-sim.core.config_loader" [color="black", label=<swarm-sim.core.config_loader>, shape="box", style="solid"];
+"swarm-sim.core.scheduler" [color="black", label=<swarm-sim.core.scheduler>, shape="box", style="solid"];
+"swarm-sim.core.schemas" [color="black", label=<swarm-sim.core.schemas>, shape="box", style="solid"];
+"swarm-sim.core.world" [color="black", label=<swarm-sim.core.world>, shape="box", style="solid"];
+"swarm-sim.data" [color="black", label=<swarm-sim.data>, shape="box", style="solid"];
+"swarm-sim.entities" [color="black", label=<swarm-sim.entities>, shape="box", style="solid"];
+"swarm-sim.entities.drone" [color="black", label=<swarm-sim.entities.drone>, shape="box", style="solid"];
+"swarm-sim.entities.types" [color="black", label=<swarm-sim.entities.types>, shape="box", style="solid"];
+"swarm-sim.environment" [color="black", label=<swarm-sim.environment>, shape="box", style="solid"];
+"swarm-sim.environment.grid" [color="black", label=<swarm-sim.environment.grid>, shape="box", style="solid"];
+"swarm-sim.environment.jamming" [color="black", label=<swarm-sim.environment.jamming>, shape="box", style="solid"];
+"swarm-sim.environment.terrain" [color="black", label=<swarm-sim.environment.terrain>, shape="box", style="solid"];
+"swarm-sim.environment.weather" [color="black", label=<swarm-sim.environment.weather>, shape="box", style="solid"];
+"swarm-sim.main" [color="black", label=<swarm-sim.main>, shape="box", style="solid"];
+"swarm-sim.systems" [color="black", label=<swarm-sim.systems>, shape="box", style="solid"];
+"swarm-sim.systems.EW" [color="black", label=<swarm-sim.systems.EW>, shape="box", style="solid"];
+"swarm-sim.systems.comms" [color="black", label=<swarm-sim.systems.comms>, shape="box", style="solid"];
+"swarm-sim.systems.coverage" [color="black", label=<swarm-sim.systems.coverage>, shape="box", style="solid"];
+"swarm-sim.systems.decision" [color="black", label=<swarm-sim.systems.decision>, shape="box", style="solid"];
+"swarm-sim.systems.movement" [color="black", label=<swarm-sim.systems.movement>, shape="box", style="solid"];
+"swarm-sim.utils" [color="black", label=<swarm-sim.utils>, shape="box", style="solid"];
+"swarm-sim.utils.math" [color="black", label=<swarm-sim.utils.math>, shape="box", style="solid"];
+"swarm-sim.utils.spatial" [color="black", label=<swarm-sim.utils.spatial>, shape="box", style="solid"];
+"swarm-sim.visualization" [color="black", label=<swarm-sim.visualization>, shape="box", style="solid"];
+"swarm-sim.visualization.renderer" [color="black", label=<swarm-sim.visualization.renderer>, shape="box", style="solid"];
+"swarm-sim.main" -> "swarm-sim.core.world" [arrowhead="open", arrowtail="none"];
+}
