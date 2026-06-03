@@ -26,8 +26,8 @@ from utils.math import clamp_to_world
 
 
 class World:
-    W = 1000.0
-    H = 1000.0
+    W = 19200
+    H = 10800
 
     def __init__(self) -> None:
         self.drones        : dict[int, Drone] = {}

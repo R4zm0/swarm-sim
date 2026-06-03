@@ -26,7 +26,6 @@ def update(world: World, desired_velocities: np.ndarray, dt: float) -> None:
     world.positions         = np.clip(world.positions, [0, 0], [world.W, world.H])
     world._sync_to_drones()
 
-
 def _clamp(vectors: np.ndarray, max_mag: np.ndarray) -> np.ndarray:
     norms = np.linalg.norm(vectors, axis=1)
     scale = np.where(norms > max_mag, max_mag / np.maximum(norms, 1e-6), 1.0)

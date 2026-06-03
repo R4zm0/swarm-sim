@@ -33,7 +33,8 @@ WORLD_BORDER = (40, 55, 80)   # bordure du monde
 
 DRONE_COLOR          = (80, 200, 255)
 DRONE_WORLD_SIZE     = 30
-DRONE_RADIUS         = 20     # rayon de base en pixels
+DRONE_MIN_RADIUS     = 20
+DRONE_RADIUS         = 100     # rayon de base en pixels
 DRONE_SCALE_EXPONENT = 0.5   # 0 = taille fixe, 1 = scale complet avec zoom
 
 MINIMAP_RATIO_W = 0.18
@@ -42,6 +43,12 @@ MINIMAP_PAD     = 10
 MINIMAP_BG      = (10, 12, 20)
 MINIMAP_BORDER  = (50, 70, 100)
 VIEWPORT_COLOR  = (80, 200, 255)
+from pathlib import Path
+_ROOT = Path(__file__).parent.parent
+
+# Chemin vers l'image de fond (None = pas de fond)
+# Remplacer par le chemin vers ton image : "data/maps/ma_carte.png"
+BACKGROUND_PATH = _ROOT / "data" / "maps" / "background.png"
 
 # Raccourcis — ajouter une ligne pour documenter un nouveau contrôle
 CONTROLS = [
@@ -51,6 +58,22 @@ CONTROLS = [
 ]
 
 
+def load_background(raw_w: int, raw_h: int) -> pygame.Surface | None:
+    """
+    Charge et scale l'image de fond aux dimensions de la raw surface.
+    Retourne None si BACKGROUND_PATH est None ou si le fichier est introuvable.
+    Appelé une seule fois au démarrage — pas de chargement à chaque frame.
+    """
+    if BACKGROUND_PATH is None:
+        return None
+    try:
+        img = pygame.image.load(BACKGROUND_PATH).convert()
+        return pygame.transform.scale(img, (raw_w, raw_h))
+    except Exception as e:
+        print(f"[renderer] background non chargé : {e}")
+        return None
+
+
 # ── Rendu du monde — éléments qui scalent avec le zoom ───────────────────────
 
 def draw_world_raw(
@@ -58,18 +81,20 @@ def draw_world_raw(
     raw_w: int,
     raw_h: int,
     world,
+    background: pygame.Surface | None = None,
 ) -> None:
     """
     Dessiné sur raw_surf → visible dans la minimap, scale avec le zoom.
     Utiliser to_raw(wx, wy, world.W, world.H, raw_w, raw_h) pour positionner.
 
-    Ajouter ici : fond PNG, terrain, zones, trajectoires.
+    Ajouter ici : terrain, zones, trajectoires.
     """
 
-    # ── fond PNG / terrain ──
-    # img = pygame.transform.scale(background, (raw_w, raw_h))
-    # surface.blit(img, (0, 0))
-    pass
+    # ── fond de carte ──
+    if background is not None:
+        surface.blit(background, (0, 0))
+
+    # ── terrain, zones... ──
 
 
 # ── Overlay écran — éléments à taille fixe en pixels ─────────────────────────
@@ -113,6 +138,26 @@ def draw_screen_overlay(
             cam_x, cam_y, zoom, sw, sh,
         )
         pygame.draw.circle(surface, DRONE_COLOR, (x, y), r)
+
+
+def draw_minimap_overlay(
+    surface: pygame.Surface,
+    world,
+    mm_w: int,
+    mm_h: int,
+) -> None:
+    """
+    Même éléments que draw_screen_overlay mais sur la minimap.
+    Utiliser to_raw() pour positionner — même projection que la minimap.
+    Taille des éléments fixe et petite pour rester lisible sur la minimap.
+    """
+    # ── drones ──
+    for drone in world.drones.values():
+        x, y = to_raw(
+            drone.position[0], drone.position[1],
+            world.W, world.H, mm_w, mm_h,
+        )
+        pygame.draw.circle(surface, DRONE_COLOR, (x, y), 2)
 
 
 # ── Projection raw → écran ────────────────────────────────────────────────────
@@ -201,6 +246,9 @@ def run(world: World, width: int = 800, height: int = 600) -> None:
 
     # ── surface raw (résolution fixe, proportionnelle au monde) ──
     raw_surf, RAW_W, RAW_H = make_raw_surface(world.W, world.H)
+
+    # ── fond de carte — chargé une fois, scaled aux dims raw ──
+    background = load_background(RAW_W, RAW_H)
 
     # surface minimap — recréée si la fenêtre change de taille
     mm_surf = pygame.Surface((1, 1))
@@ -334,6 +382,7 @@ def run(world: World, width: int = 800, height: int = 600) -> None:
         pygame.MOUSEBUTTONDOWN: on_mousebuttondown,
         pygame.MOUSEBUTTONUP:   on_mousebuttonup,
         pygame.MOUSEMOTION:     on_mousemotion,
+        pygame.K_ESCAPE: lambda: state.update(running=False)
     }
 
     reset_camera()  # zoom initial = fit monde entier
@@ -345,6 +394,7 @@ def run(world: World, width: int = 800, height: int = 600) -> None:
 
         mm_w = int(sw * MINIMAP_RATIO_W)
         mm_h = int(sh * MINIMAP_RATIO_H)
+        
         if mm_surf.get_size() != (mm_w, mm_h):
             mm_surf = pygame.Surface((mm_w, mm_h))
 
@@ -364,7 +414,7 @@ def run(world: World, width: int = 800, height: int = 600) -> None:
 
         # 2. rendu du monde sur la surface raw
         raw_surf.fill(BG_WORLD)
-        draw_world_raw(raw_surf, RAW_W, RAW_H, world)
+        draw_world_raw(raw_surf, RAW_W, RAW_H, world, background)
 
         # 3. projection raw → écran (gère zoom, pan, bandes noires)
         project_to_screen(screen, raw_surf, RAW_W, RAW_H,
@@ -373,9 +423,10 @@ def run(world: World, width: int = 800, height: int = 600) -> None:
         # 4. éléments à taille fixe (drones, labels...) — par-dessus la projection
         draw_screen_overlay(screen, world, cam_x, cam_y, zoom)
 
-        # 5. minimap : scale entier de raw_surf + viewport
+        # 5. minimap : scale entier de raw_surf + overlay + viewport
         mm_surf.fill(MINIMAP_BG)
         pygame.transform.scale(raw_surf, (mm_w, mm_h), mm_surf)
+        draw_minimap_overlay(mm_surf, world, mm_w, mm_h)
 
         vp_w = int((sw / zoom) / world.W * mm_w)
         vp_h = int((sh / zoom) / world.H * mm_h)
