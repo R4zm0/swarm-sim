@@ -32,6 +32,7 @@ class Drone:
     signal_quality: float = 1.0      # 0 = comm coupée, 1 = signal parfait
     sensor_efficiency: float = 1.0   # réduit par météo / terrain
     
+    
 
     # --- comms ---
     messages: list = field(default_factory=list)
