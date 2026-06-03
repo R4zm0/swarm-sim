@@ -6,7 +6,7 @@
     "sensor_radius": 50.0,
     "comm_radius": 150.0,
     "battery_capacity": 100.0,
-    "max_force": 5.0,
+    "max_force": 10,
     "mass": 1.0
   },
 

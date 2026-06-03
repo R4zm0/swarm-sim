@@ -1,83 +1,392 @@
 # visualization/renderer.py
-import pygame
-import numpy as np
-from core.world import World
-FPS = 60
-BG = (15, 15, 25)
-DRONE_COLOR = (80, 200, 255)
-DRONE_RADIUS = 6
+"""
+Renderer pygame pour swarm-sim.
 
+Architecture raw surface :
+    Tout le contenu du monde est dessiné sur une surface intermédiaire
+    (raw_surf) en coordonnées raw, indépendamment du zoom et de la fenêtre.
+    La projection (zoom, pan, crop) est appliquée en une seule passe à la fin.
+
+    Avantages :
+    - draw_world_raw() ne connaît pas le zoom → pas de zoom en paramètre
+    - Ajouter un effet post-processing (fog of war, flou...) = une passe sur raw_surf
+    - Minimap = pygame.transform.scale(raw_surf) gratuit
+
+    Deux cas de projection :
+    - Monde plus petit que l'écran (dézoom max) → scale entier + blit centré + bandes noires
+    - Monde plus grand que l'écran (zoomé)      → subsurface crop + scale plein écran
+
+Point d'entrée : run(world)
+"""
+
+import pygame
+from core.world import World
+from visualization.utils import to_raw, blit_centered, make_raw_surface
+
+
+# ── Configuration ──────────────────────────────────────────────────────────────
+
+FPS          = 60
+BG_WORLD     = (15, 15, 25)   # fond à l'intérieur du monde
+BG_OUTSIDE   = ( 5,  5,  8)   # fond hors du monde (bandes noires)
+WORLD_BORDER = (40, 55, 80)   # bordure du monde
+
+DRONE_COLOR          = (80, 200, 255)
+DRONE_WORLD_SIZE     = 30
+DRONE_RADIUS         = 20     # rayon de base en pixels
+DRONE_SCALE_EXPONENT = 0.5   # 0 = taille fixe, 1 = scale complet avec zoom
+
+MINIMAP_RATIO_W = 0.18
+MINIMAP_RATIO_H = 0.20
+MINIMAP_PAD     = 10
+MINIMAP_BG      = (10, 12, 20)
+MINIMAP_BORDER  = (50, 70, 100)
+VIEWPORT_COLOR  = (80, 200, 255)
+
+# Raccourcis — ajouter une ligne pour documenter un nouveau contrôle
+CONTROLS = [
+    "scroll     zoom",
+    "clic droit  pan",
+    "R          reset",
+]
+
+
+# ── Rendu du monde — éléments qui scalent avec le zoom ───────────────────────
+
+def draw_world_raw(
+    surface: pygame.Surface,
+    raw_w: int,
+    raw_h: int,
+    world,
+) -> None:
+    """
+    Dessiné sur raw_surf → visible dans la minimap, scale avec le zoom.
+    Utiliser to_raw(wx, wy, world.W, world.H, raw_w, raw_h) pour positionner.
+
+    Ajouter ici : fond PNG, terrain, zones, trajectoires.
+    """
+
+    # ── fond PNG / terrain ──
+    # img = pygame.transform.scale(background, (raw_w, raw_h))
+    # surface.blit(img, (0, 0))
+    pass
+
+
+# ── Overlay écran — éléments à taille fixe en pixels ─────────────────────────
+
+def _world_to_screen(
+    wx: float, wy: float,
+    cam_x: float, cam_y: float,
+    zoom: float,
+    sw: int, sh: int,
+) -> tuple[int, int]:
+    """Coordonnées monde → pixels écran selon la caméra courante."""
+    return (
+        int((wx - cam_x) * zoom + sw / 2),
+        int((wy - cam_y) * zoom + sh / 2),
+    )
+
+
+def draw_screen_overlay(
+    surface: pygame.Surface,
+    world,
+    cam_x: float,
+    cam_y: float,
+    zoom: float,
+) -> None:
+    """
+    Dessiné directement sur screen après projection — taille constante au zoom.
+    Utiliser _world_to_screen() pour positionner.
+
+    Ajouter ici : sprites drones, labels, marqueurs, cercles de portée.
+    """
+    sw, sh = surface.get_size()
+
+    # soft scaling : réduit avec le dézoom mais moins vite que le zoom
+    # DRONE_SCALE_EXPONENT : 0 = taille fixe, 1 = scale complet
+    r = max(2, int(DRONE_RADIUS * zoom ** DRONE_SCALE_EXPONENT))
+
+    # ── drones ──
+    for drone in world.drones.values():
+        x, y = _world_to_screen(
+            drone.position[0], drone.position[1],
+            cam_x, cam_y, zoom, sw, sh,
+        )
+        pygame.draw.circle(surface, DRONE_COLOR, (x, y), r)
+
+
+# ── Projection raw → écran ────────────────────────────────────────────────────
+
+def project_to_screen(
+    screen: pygame.Surface,
+    raw_surf: pygame.Surface,
+    raw_w: int,
+    raw_h: int,
+    cam_x: float,
+    cam_y: float,
+    zoom: float,
+    world,
+) -> None:
+    """
+    Projette raw_surf sur l'écran selon la caméra courante.
+
+    Cas A — monde plus petit que l'écran :
+        Scale entier + blit centré. Bandes noires sur les côtés.
+    Cas B — monde remplit l'écran (zoomé) :
+        Subsurface crop de la zone visible + scale plein écran.
+    """
+    sw, sh = screen.get_size()
+
+    world_px_w = world.W * zoom
+    world_px_h = world.H * zoom
+
+    if world_px_w < sw - 1 or world_px_h < sh - 1:
+        # ── Cas A : monde plus petit que l'écran ──
+        wpw = max(1, int(world_px_w))
+        wph = max(1, int(world_px_h))
+        scaled  = pygame.transform.scale(raw_surf, (wpw, wph))
+        blit_x  = (sw - wpw) // 2
+        blit_y  = (sh - wph) // 2
+        screen.blit(scaled, (blit_x, blit_y))
+        # bordure du monde
+        pygame.draw.rect(screen, WORLD_BORDER, (blit_x, blit_y, wpw, wph), 1)
+
+    else:
+        # ── Cas B : monde remplit l'écran, crop la zone visible ──
+        raw_cx     = cam_x / world.W * raw_w
+        raw_cy     = cam_y / world.H * raw_h
+        raw_view_w = (sw / zoom) / world.W * raw_w
+        raw_view_h = (sh / zoom) / world.H * raw_h
+
+        rx = int(max(0.0, raw_cx - raw_view_w / 2))
+        ry = int(max(0.0, raw_cy - raw_view_h / 2))
+        rw = max(1, min(raw_w - rx, int(raw_view_w) + 1))
+        rh = max(1, min(raw_h - ry, int(raw_view_h) + 1))
+
+        crop   = raw_surf.subsurface((rx, ry, rw, rh))
+        scaled = pygame.transform.scale(crop, (sw, sh))
+        screen.blit(scaled, (0, 0))
+
+
+# ── Overlay contrôles ─────────────────────────────────────────────────────────
+
+def draw_controls(surface: pygame.Surface) -> None:
+    """Raccourcis en bas à gauche, fond semi-transparent."""
+    font = pygame.font.SysFont("Courier New", 11)
+    pad  = 6
+    lh   = font.get_height() + 2
+    w    = 130
+    h    = len(CONTROLS) * lh + pad * 2
+
+    overlay = pygame.Surface((w, h), pygame.SRCALPHA)
+    overlay.fill((0, 0, 0, 180))
+    surface.blit(overlay, (pad, surface.get_height() - h - pad))
+
+    for i, line in enumerate(CONTROLS):
+        surf = font.render(line, True, (120, 130, 150))
+        surface.blit(surf, (pad * 2, surface.get_height() - h - pad + pad + i * lh))
+
+
+# ── Boucle principale ─────────────────────────────────────────────────────────
 
 def run(world: World, width: int = 800, height: int = 600) -> None:
+    """
+    Lance la fenêtre pygame et la boucle de rendu.
+    Bloquant jusqu'à fermeture (ESC ou croix).
+    """
     pygame.init()
     screen = pygame.display.set_mode((width, height), pygame.RESIZABLE)
     pygame.display.set_caption("swarm-sim")
-    clock = pygame.time.Clock()
+    clock  = pygame.time.Clock()
 
-    # caméra : centre du monde visible + zoom
-    zoom = 1.0
+    # ── surface raw (résolution fixe, proportionnelle au monde) ──
+    raw_surf, RAW_W, RAW_H = make_raw_surface(world.W, world.H)
+
+    # surface minimap — recréée si la fenêtre change de taille
+    mm_surf = pygame.Surface((1, 1))
+
+    # ── état caméra ──
+    zoom  = 1.0          # sera corrigé par reset_camera()
     cam_x = world.W / 2
     cam_y = world.H / 2
 
-    dragging = False
-    drag_last = (0, 0)
+    # ── état drag ──
+    dragging_cam     = False
+    dragging_minimap = False
+    drag_last        = (0, 0)
 
-    def world_to_screen(wx, wy):
-        sw = screen.get_width()
-        sh = screen.get_height()
-        sx = int((wx - cam_x) * zoom + sw / 2)
-        sy = int((wy - cam_y) * zoom + sh / 2)
-        return sx, sy
+    # ── fonctions internes ────────────────────────────────────────────────────
 
-    running = True
-    while running:
+    def minimap_rect(sw, sh, mm_w, mm_h) -> pygame.Rect:
+        return pygame.Rect(sw - mm_w - MINIMAP_PAD, MINIMAP_PAD, mm_w, mm_h)
+
+    def minimap_to_world(mx, my, mm_rect) -> tuple[float, float]:
+        return (
+            (mx - mm_rect.x) / mm_rect.width  * world.W,
+            (my - mm_rect.y) / mm_rect.height * world.H,
+        )
+
+    def clamp_camera() -> None:
+        """
+        Maintient la caméra dans les limites du monde.
+        - zoom min = monde entier visible
+        - si monde tient dans une dimension → centré, pan bloqué
+        - sinon → clamp aux bords
+        """
+        nonlocal zoom, cam_x, cam_y
+        sw, sh = screen.get_size()
+
+        zoom_min = min(sw / world.W, sh / world.H)
+        zoom     = max(zoom_min, min(10.0, zoom))
+
+        world_px_w = world.W * zoom
+        world_px_h = world.H * zoom
+
+        if world_px_w <= sw:
+            cam_x = world.W / 2
+        else:
+            half_w = (sw / 2) / zoom
+            cam_x  = max(half_w, min(world.W - half_w, cam_x))
+
+        if world_px_h <= sh:
+            cam_y = world.H / 2
+        else:
+            half_h = (sh / 2) / zoom
+            cam_y  = max(half_h, min(world.H - half_h, cam_y))
+
+    # ── state dict + actions clavier ─────────────────────────────────────────
+
+    state = {"running": True}
+
+    def reset_camera() -> None:
+        nonlocal zoom, cam_x, cam_y
+        sw, sh = screen.get_size()
+        cam_x = world.W / 2
+        cam_y = world.H / 2
+        zoom  = min(sw / world.W, sh / world.H)
+
+    # Pour ajouter un raccourci : KEY_ACTIONS[pygame.K_xxx] = callable
+    KEY_ACTIONS = {
+        pygame.K_ESCAPE: lambda: state.update(running=False),
+        pygame.K_r:      reset_camera,
+    }
+
+    # ── handlers d'événements ─────────────────────────────────────────────────
+
+    def on_quit(event):
+        state["running"] = False
+
+    def on_keydown(event):
+        action = KEY_ACTIONS.get(event.key)
+        if action:
+            action()
+
+    def on_videoresize(event):
+        clamp_camera()
+
+    def on_mousewheel(event):
+        nonlocal zoom, cam_x, cam_y
+        sw, sh = screen.get_size()
+        mx, my = pygame.mouse.get_pos()
+        wx = (mx - sw / 2) / zoom + cam_x
+        wy = (my - sh / 2) / zoom + cam_y
+        zoom *= 1.1 if event.y > 0 else 0.9
+        cam_x = wx - (mx - sw / 2) / zoom
+        cam_y = wy - (my - sh / 2) / zoom
+        clamp_camera()
+
+    def on_mousebuttondown(event):
+        nonlocal dragging_cam, dragging_minimap, drag_last, cam_x, cam_y
+        mx, my = event.pos
+        if mm_rect.collidepoint(mx, my):
+            cam_x, cam_y = minimap_to_world(mx, my, mm_rect)
+            dragging_minimap = True
+            clamp_camera()
+        elif event.button in (2, 3):
+            dragging_cam = True
+            drag_last    = event.pos
+
+    def on_mousebuttonup(event):
+        nonlocal dragging_cam, dragging_minimap
+        dragging_cam     = False
+        dragging_minimap = False
+
+    def on_mousemotion(event):
+        nonlocal cam_x, cam_y, drag_last
+        mx, my = event.pos
+        if dragging_minimap and mm_rect.collidepoint(mx, my):
+            cam_x, cam_y = minimap_to_world(mx, my, mm_rect)
+            clamp_camera()
+        elif dragging_cam:
+            dx = mx - drag_last[0]
+            dy = my - drag_last[1]
+            cam_x -= dx / zoom
+            cam_y -= dy / zoom
+            drag_last = event.pos
+            clamp_camera()
+
+    # Pour ajouter un handler : EVENT_HANDLERS[pygame.XXXXX] = callable
+    EVENT_HANDLERS = {
+        pygame.QUIT:            on_quit,
+        pygame.KEYDOWN:         on_keydown,
+        pygame.VIDEORESIZE:     on_videoresize,
+        pygame.MOUSEWHEEL:      on_mousewheel,
+        pygame.MOUSEBUTTONDOWN: on_mousebuttondown,
+        pygame.MOUSEBUTTONUP:   on_mousebuttonup,
+        pygame.MOUSEMOTION:     on_mousemotion,
+    }
+
+    reset_camera()  # zoom initial = fit monde entier
+
+    # ── boucle ───────────────────────────────────────────────────────────────
+
+    while state["running"]:
+        sw, sh = screen.get_size()
+
+        mm_w = int(sw * MINIMAP_RATIO_W)
+        mm_h = int(sh * MINIMAP_RATIO_H)
+        if mm_surf.get_size() != (mm_w, mm_h):
+            mm_surf = pygame.Surface((mm_w, mm_h))
+
+        mm_rect = minimap_rect(sw, sh, mm_w, mm_h)
+
+        # ── événements ───────────────────────────────────────────────────────
+
         for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                running = False
+            handler = EVENT_HANDLERS.get(event.type)
+            if handler:
+                handler(event)
 
-            elif event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_ESCAPE:
-                    running = False
-                elif event.key == pygame.K_r:  # reset caméra
-                    zoom = 1.0
-                    cam_x = world.W / 2
-                    cam_y = world.H / 2
+        # ── dessin ───────────────────────────────────────────────────────────
 
-            elif event.type == pygame.MOUSEWHEEL:
-                # zoom centré sur la position souris
-                mx, my = pygame.mouse.get_pos()
-                sw, sh = screen.get_width(), screen.get_height()
-                # position monde sous la souris avant zoom
-                wx = (mx - sw / 2) / zoom + cam_x
-                wy = (my - sh / 2) / zoom + cam_y
-                zoom *= 1.1 if event.y > 0 else 0.9
-                zoom = max(0.1, min(10.0, zoom))
-                # repositionne la caméra pour garder le point fixe
-                cam_x = wx - (mx - sw / 2) / zoom
-                cam_y = wy - (my - sh / 2) / zoom
+        # 1. fond hors monde
+        screen.fill(BG_OUTSIDE)
 
-            elif event.type == pygame.MOUSEBUTTONDOWN:
-                if event.button in (2, 3):  # clic milieu ou droit = pan
-                    dragging = True
-                    drag_last = event.pos
+        # 2. rendu du monde sur la surface raw
+        raw_surf.fill(BG_WORLD)
+        draw_world_raw(raw_surf, RAW_W, RAW_H, world)
 
-            elif event.type == pygame.MOUSEBUTTONUP:
-                if event.button in (2, 3):
-                    dragging = False
+        # 3. projection raw → écran (gère zoom, pan, bandes noires)
+        project_to_screen(screen, raw_surf, RAW_W, RAW_H,
+                          cam_x, cam_y, zoom, world)
 
-            elif event.type == pygame.MOUSEMOTION:
-                if dragging:
-                    dx = event.pos[0] - drag_last[0]
-                    dy = event.pos[1] - drag_last[1]
-                    cam_x -= dx / zoom
-                    cam_y -= dy / zoom
-                    drag_last = event.pos
+        # 4. éléments à taille fixe (drones, labels...) — par-dessus la projection
+        draw_screen_overlay(screen, world, cam_x, cam_y, zoom)
 
-        screen.fill(BG)
+        # 5. minimap : scale entier de raw_surf + viewport
+        mm_surf.fill(MINIMAP_BG)
+        pygame.transform.scale(raw_surf, (mm_w, mm_h), mm_surf)
 
-        for drone in world.drones.values():
-            x, y = world_to_screen(drone.position[0], drone.position[1])
-            pygame.draw.circle(screen, DRONE_COLOR, (x, y), DRONE_RADIUS)
+        vp_w = int((sw / zoom) / world.W * mm_w)
+        vp_h = int((sh / zoom) / world.H * mm_h)
+        vp_x = int(cam_x / world.W * mm_w - vp_w / 2)
+        vp_y = int(cam_y / world.H * mm_h - vp_h / 2)
+        pygame.draw.rect(mm_surf, VIEWPORT_COLOR, (vp_x, vp_y, vp_w, vp_h), 1)
+
+        # 5. overlays (contrôles + minimap par-dessus tout)
+        draw_controls(screen)
+        screen.blit(mm_surf, mm_rect.topleft)
+        pygame.draw.rect(screen, MINIMAP_BORDER, mm_rect, 1)
 
         pygame.display.flip()
         clock.tick(FPS)
