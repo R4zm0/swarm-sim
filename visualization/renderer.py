@@ -21,6 +21,7 @@ Point d'entrée : run(world)
 
 import pygame
 from core.world import World
+from entities import drone
 from visualization.utils import to_raw, blit_centered, make_raw_surface
 
 
@@ -138,6 +139,9 @@ def draw_screen_overlay(
             cam_x, cam_y, zoom, sw, sh,
         )
         pygame.draw.circle(surface, DRONE_COLOR, (x, y), r)
+        font = pygame.font.SysFont("Courier New", 11)
+        surf = font.render(f"{drone.battery_level:.2f}", True, (180, 180, 180))
+        surface.blit(surf, (x + r + 3, y - surf.get_height() // 2))
 
 
 def draw_minimap_overlay(
@@ -158,6 +162,7 @@ def draw_minimap_overlay(
             world.W, world.H, mm_w, mm_h,
         )
         pygame.draw.circle(surface, DRONE_COLOR, (x, y), 2)
+
 
 
 # ── Projection raw → écran ────────────────────────────────────────────────────
@@ -382,7 +387,6 @@ def run(world: World, width: int = 800, height: int = 600) -> None:
         pygame.MOUSEBUTTONDOWN: on_mousebuttondown,
         pygame.MOUSEBUTTONUP:   on_mousebuttonup,
         pygame.MOUSEMOTION:     on_mousemotion,
-        pygame.K_ESCAPE: lambda: state.update(running=False)
     }
 
     reset_camera()  # zoom initial = fit monde entier

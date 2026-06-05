@@ -1,46 +1,89 @@
 {
+  "_battery_tuning": {
+    "note": "ignoré au chargement — référence tuning uniquement",
+
+    "battery_knee : seuil de chute de vitesse": {
+      "0.05 - 0.15": "kamikaze / consommé jusqu'au bout  (FPV, one-way)",
+      "0.20 - 0.25": "BMS logiciel, retour planifié       (Mavic, rens caméra)",
+      "0.30 - 0.40": "conservateur, endurance longue mission"
+    },
+
+    "battery_steepness : brutalité de la chute": {
+      "5  - 8 ": "chute douce sur ~30% de niveau  (dégradation progressive)",
+      "10 - 15": "chute marquée sur ~15%           (LiPo mid-range réaliste)",
+      "18 - 25": "chute quasi-échelon sur ~5-8%    (LiPo haute décharge, FPV)"
+    }
+  },
+
   "_base": {
-    "type": "default",
-    "display_name": "Drone",
-    "speed": 10.0,
-    "sensor_radius": 50.0,
-    "comm_radius": 150.0,
-    "battery_capacity": 100.0,
-    "max_force": 10,
-    "mass": 1.0
+    "type":             "default",
+    "display_name":     "Drone",
+    "speed":            10.0,
+    "sensor_radius":    50.0,
+    "comm_radius":      150.0,
+    "battery_capacity": 1,
+    "max_force":        10.0,
+    "mass":             1.0,
+    "battery_model":    "lipo",
+    "battery_knee":     0.20,
+    "battery_steepness": 15.0
   },
 
   "fpv": {
-    "parent": "_base",
+    "parent":       "_base",
+    "type":         "fpv",
     "display_name": "FPV Kamikaze",
-    "speed": 28.0,
-    "sensor_radius": 15.0,
-    "comm_radius": 80.0,
-    "battery_capacity": 20.0,
-    "max_force": 12.0,
-    "mass": 0.3
+
+    "speed":            28.0,
+    "max_force":        25.0,
+    "mass":             1, 
+
+    "sensor_radius":    15.0,
+    "comm_radius":      80.0,
+    
+    
+    "battery_model":     "lipo",
+    "battery_knee":      0.12,
+    "battery_steepness": 30,
+    "power_idle":  0.0001,    
+    "power_max_steer": 0.1
   },
 
   "mavic_isr": {
-    "parent": "_base",
+    "parent":       "_base",
+    "type":         "isr",
     "display_name": "Mavic ISR",
-    "speed": 12.0,
-    "sensor_radius": 120.0,
-    "comm_radius": 200.0,
-    "battery_capacity": 45.0,
-    "max_force": 4.0,
-    "mass": 0.9
+
+    "speed":            120.0,
+    "sensor_radius":    120.0,
+    "comm_radius":      200.0,
+    "max_force":        100.0,
+    "mass":             0.9,
+
+    "battery_model":     "lipo",
+    "battery_knee":      0.25,
+    "battery_steepness": 11.0,
+
+    "power_idle":  0.001,   
+    "power_max_steer": 0.005
   },
 
   "lancet": {
-    "parent": "_base",
-    "type": "loitering",
+    "parent":       "_base",
+    "type":         "loitering",
     "display_name": "Lancet-3",
-    "speed": 18.0,
-    "sensor_radius": 80.0,
-    "comm_radius": 120.0,
-    "battery_capacity": 90.0,
-    "max_force": 8.0,
-    "mass": 5.0
+
+    "speed":            18.0,
+    "sensor_radius":    80.0,
+    "comm_radius":      120.0,
+    "max_force":        8.0,
+    "mass":             5.0,
+
+    "battery_model":     "combustion",
+    "battery_knee":      0.0,
+    "battery_steepness": 1.0,
+
+    "power_idle":  0.03,  
+    "power_max_steer": 0.008
   }
 }

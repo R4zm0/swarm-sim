@@ -1,6 +1,10 @@
 from dataclasses import dataclass, field
 from entities.types import DroneMode
 import numpy as np
+import math
+
+
+
 
 @dataclass
 class Drone:
@@ -15,8 +19,14 @@ class Drone:
 
     sensor_radius: float 
     comm_radius: float
-    battery_capacity: float
     
+    battery_capacity: float
+    battery_model: str
+    battery_knee: float
+    battery_steepness: float
+
+    power_idle: float
+    power_max_steer: float
 
     # --- état cinématique ---
     position: np.ndarray = field(default_factory=lambda: np.zeros(2))
@@ -37,11 +47,36 @@ class Drone:
     # --- comms ---
     messages: list = field(default_factory=list)
 
-    @property
-    def effective_speed(self) -> float:
-        return self.speed * (1.0 - 0.5 * self.jamming_level) * self.battery_level
+
+    def _lipo_factor(self) -> float:
+        print(1.0 / (1.0 + math.exp(
+            -self.battery_steepness * (self.battery_level - self.battery_knee)
+        )))
+        return 1.0 / (1.0 + math.exp(
+            -self.battery_steepness * (self.battery_level - self.battery_knee)
+        ))
+
+    def _combustion_factor(self) -> float:
+        return 1.0 if self.battery_level > 0.02 else 0.0
+
+    def _linear_factor(self) -> float:
+        return self.battery_level
+
+
+    def __post_init__(self) -> None:
+        match self.battery_model:
+            case "combustion":
+                self._battery_factor = self._combustion_factor
+            case "lipo":
+                self._battery_factor = self._lipo_factor
+            case _:
+                self._battery_factor = self._linear_factor
 
     @property
+    def effective_speed(self) -> float:
+        return self.speed * self._battery_factor()
+
+    @property   
     def effective_sensor_radius(self) -> float:
         return self.sensor_radius * self.sensor_efficiency
 

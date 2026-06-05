@@ -43,6 +43,13 @@ class World:
         self.max_forces = np.zeros(0, dtype=float)   # fixe
         self.masses     = np.zeros(0, dtype=float)   # fixe
 
+        # core/world.py
+        self.battery_levels    = np.ones(0)          # (N,)  — état, mutable
+        self.battery_capacities = np.zeros(0)        # (N,)  — fixe, caché à add_drone
+        
+        self.power_idle        = np.zeros(0)         # (N,)  — fixe
+        self.power_max_steer       = np.zeros(0)         # (N,)  — fixe
+
     # ── Ajout de drones ───────────────────────────────────────────────────────
 
     def add_drone(
@@ -61,6 +68,7 @@ class World:
         drone.position = pos.copy()
 
         self.drones[drone_id] = drone
+
         self.positions  = np.vstack([self.positions,  [pos]])
         self.velocities = np.vstack([self.velocities, [drone.velocity]])
         self.targets    = np.vstack([self.targets,    [pos]])       # target = position initiale
@@ -68,7 +76,12 @@ class World:
         self.max_forces = np.append(self.max_forces, config.max_force)
         self.masses     = np.append(self.masses,     config.mass)
 
-        self._next_id += 1
+        self.battery_levels     = np.append(self.battery_levels,     1.0)
+        self.battery_capacities = np.append(self.battery_capacities, config.battery_capacity)
+        self.power_max_steer        = np.append(self.power_max_steer,        config.power_max_steer) # entre 0 et 1 combien de pourcentage de batterie par tick pour FORCE MAX
+        self.power_idle             = np.append(self.power_idle,             config.power_idle)        # entre 0 et 1 combien de pourcentage de batterie par tick au repos
+
+        self._next_id += 1  
         return drone
 
     # ── Sync individuel ───────────────────────────────────────────────────────
@@ -107,7 +120,7 @@ class World:
         Boucle inévitable : la formule peut différer par type de drone.
         """
         return np.array([d.effective_speed for d in self.drones.values()])
-
+    
     # ── Interne ───────────────────────────────────────────────────────────────
 
     def _sync_alive_mask(self) -> None:
@@ -118,4 +131,5 @@ class World:
         for drone_id, drone in self.drones.items():
             drone.position = self.positions[drone_id]
             drone.velocity = self.velocities[drone_id]
+            drone.battery_level = self.battery_levels[drone_id]
         self._sync_alive_mask()
