@@ -1,24 +1,23 @@
 # core/world.py
 """
-World : conteneur central de la simulation.
+World — conteneur central de la simulation.
 
-Deux niveaux de représentation coexistent :
-    - self.drones (dict id → Drone) : logique individuelle, comportements, états
-    - arrays numpy N×2 / N : calculs vectorisés
+Architecture :
+    ComponentStore  : tous les scalaires et objets par-drone.
+                      Peuplé automatiquement depuis DroneConfig.model_dump().
+                      Ajouter un champ = JSON + schemas.py, rien d'autre.
 
-Arrays numpy :
-    positions   (N, 2)  — source de vérité physique
-    velocities  (N, 2)
-    alive_mask  (N,)    — False = DEAD, jamais supprimé
-    max_forces  (N,)    — fixe, caché à add_drone
-    masses      (N,)    — fixe, caché à add_drone
-    targets     (N, 2)  — target de navigation, écrit par decision.py
+    positions  (N, 2) : source de vérité physique — vec2, hors ComponentStore
+    velocities (N, 2)
+    targets    (N, 2)
+    alive_mask (N,)   : mis à jour en fin de tick via _sync_alive_mask()
 
-effective_speed n'est pas caché — dépend de battery/jamming propre à chaque drone,
-recalculé à la demande via une boucle dans movement.py.
+    Drone             : proxy léger — drone.battery_level lit/écrit directement
+                        dans ComponentStore, zéro copie, zéro sync manuel.
 """
 
 import numpy as np
+from core.components import ComponentStore
 from core.config_loader import load_drone_configs
 from entities.drone import Drone
 from entities.types import DroneMode
@@ -29,78 +28,80 @@ class World:
     W = 19200
     H = 10800
 
-    def __init__(self) -> None:
-        self.drones        : dict[int, Drone] = {}
-        self._next_id      = 0
-        self.drone_configs = load_drone_configs()
+    # État initial d'un drone — fusionné avec config.model_dump() dans add_drone.
+    # C'est ici (et seulement ici) que tu déclares les composants mutables
+    # qui ne viennent pas du JSON.
+    _INITIAL_STATE: dict = {
+        "battery_level":     1.0,
+        "jamming_level":     0.0,
+        "signal_quality":    1.0,
+        "sensor_efficiency": 1.0,
+        "mode":              DroneMode.ACTIVE,
+        "messages":          [],
+        "team":              0,        # ← ajout
+        
+    }
 
-        # shape (N, 2)
+    def __init__(self) -> None:
+        self.components    = ComponentStore()
+        self.drone_configs = load_drone_configs()
+        self.drones: dict[int, Drone] = {}
+        self._next_id = 0
+
+        # Vec2 arrays — shape (N, 2), hors ComponentStore (pas scalaires)
         self.positions  = np.zeros((0, 2), dtype=float)
         self.velocities = np.zeros((0, 2), dtype=float)
         self.targets    = np.zeros((0, 2), dtype=float)
-        # shape (N,)
         self.alive_mask = np.zeros(0, dtype=bool)
-        self.max_forces = np.zeros(0, dtype=float)   # fixe
-        self.masses     = np.zeros(0, dtype=float)   # fixe
-
-        # core/world.py
-        self.battery_levels    = np.ones(0)          # (N,)  — état, mutable
-        self.battery_capacities = np.zeros(0)        # (N,)  — fixe, caché à add_drone
-        
-        self.power_idle        = np.zeros(0)         # (N,)  — fixe
-        self.power_max_steer       = np.zeros(0)         # (N,)  — fixe
 
     # ── Ajout de drones ───────────────────────────────────────────────────────
 
-    def add_drone(
-        self,
-        drone_type: str,
-        position: np.ndarray | None = None,
-    ) -> Drone:
+    def add_drone(self, drone_type: str, position: np.ndarray | None = None, team: int = 0) -> Drone:
         config   = self.drone_configs[drone_type]
         drone_id = self._next_id
-        drone    = Drone(id=drone_id, **config.model_dump())
 
         pos = clamp_to_world(
             position if position is not None else np.zeros(2),
             self.W, self.H,
         )
-        drone.position = pos.copy()
-
-        self.drones[drone_id] = drone
+        # Un seul push — config immuable + état initial mutable
+        self.components.push({**config.model_dump(), **self._INITIAL_STATE, "team": team})
 
         self.positions  = np.vstack([self.positions,  [pos]])
-        self.velocities = np.vstack([self.velocities, [drone.velocity]])
-        self.targets    = np.vstack([self.targets,    [pos]])       # target = position initiale
+        self.velocities = np.vstack([self.velocities, [[0., 0.]]])
+        self.targets    = np.vstack([self.targets,    [pos]])
         self.alive_mask = np.append(self.alive_mask, True)
-        self.max_forces = np.append(self.max_forces, config.max_force)
-        self.masses     = np.append(self.masses,     config.mass)
 
-        self.battery_levels     = np.append(self.battery_levels,     1.0)
-        self.battery_capacities = np.append(self.battery_capacities, config.battery_capacity)
-        self.power_max_steer        = np.append(self.power_max_steer,        config.power_max_steer) # entre 0 et 1 combien de pourcentage de batterie par tick pour FORCE MAX
-        self.power_idle             = np.append(self.power_idle,             config.power_idle)        # entre 0 et 1 combien de pourcentage de batterie par tick au repos
-
-        self._next_id += 1  
+        drone = Drone(drone_id, self)
+        self.drones[drone_id] = drone
+        self._next_id += 1
         return drone
 
-    # ── Sync individuel ───────────────────────────────────────────────────────
+    # ── Propriétés — raccourcis vers les arrays les plus utilisés ─────────────
+    # Évite d'écrire world.components.arr("max_force") dans movement/battery.
+    # Backward-compat avec le code existant.
 
-    def sync_from_drone(self, drone_id: int) -> None:
-        """Sync position + velocity d'un Drone vers les arrays."""
-        drone = self.drones[drone_id]
-        self.positions[drone_id]  = drone.position
-        self.velocities[drone_id] = drone.velocity
+    @property
+    def max_forces(self) -> np.ndarray:
+        return self.components.arr("max_force")
 
-    def sync_velocity(self, drone_id: int, velocity: np.ndarray) -> None:
-        self.drones[drone_id].velocity = velocity.copy()
-        self.velocities[drone_id]      = velocity
+    @property
+    def masses(self) -> np.ndarray:
+        return self.components.arr("mass")
 
-    def sync_position(self, drone_id: int, position: np.ndarray) -> None:
-        self.drones[drone_id].position = position.copy()
-        self.positions[drone_id]       = position
+    @property
+    def battery_levels(self) -> np.ndarray:
+        return self.components.arr("battery_level")
 
-    # ── Accesseurs vectorisés ─────────────────────────────────────────────────
+    @property
+    def power_idle(self) -> np.ndarray:
+        return self.components.arr("power_idle")
+
+    @property
+    def power_max_steer(self) -> np.ndarray:
+        return self.components.arr("power_max_steer")
+
+    # ── Helpers vectorisés ────────────────────────────────────────────────────
 
     @property
     def live_positions(self) -> np.ndarray:
@@ -115,21 +116,19 @@ class World:
         return int(self.alive_mask.sum())
 
     def effective_speeds(self) -> np.ndarray:
-        """
-        Recalculé à chaque appel : dépend de battery/jamming propre à chaque drone.
-        Boucle inévitable : la formule peut différer par type de drone.
-        """
+        """Boucle inévitable — battery_factor dépend du modèle propre à chaque drone."""
         return np.array([d.effective_speed for d in self.drones.values()])
-    
-    # ── Interne ───────────────────────────────────────────────────────────────
+
+    # ── Sync ──────────────────────────────────────────────────────────────────
 
     def _sync_alive_mask(self) -> None:
+        """
+        Drone étant un proxy, positions/battery/etc sont toujours en sync.
+        Seul alive_mask (hors ComponentStore) nécessite une sync explicite.
+        """
         for drone_id, drone in self.drones.items():
             self.alive_mask[drone_id] = drone.is_alive
 
     def _sync_to_drones(self) -> None:
-        for drone_id, drone in self.drones.items():
-            drone.position = self.positions[drone_id]
-            drone.velocity = self.velocities[drone_id]
-            drone.battery_level = self.battery_levels[drone_id]
+        """Alias conservé pour compatibilité avec main.py."""
         self._sync_alive_mask()

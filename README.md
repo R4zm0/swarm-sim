@@ -19,3 +19,7 @@ Drone swarm simulation framework.
 pip install -r requirements.txt
 python main.py
 ```
+
+
+# A FAIRE CODER LE DEBUT DU DRONE DANS LA CLASSE QUI VA BIEN! !!!
+# FAIRE UN JSON BASE STAT POUR SUPPORTER A l'AVENIR LES CHANGEMENT DE STATS  

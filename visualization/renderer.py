@@ -1,4 +1,7 @@
 # visualization/renderer.py
+
+import systems.detection as detection
+
 """
 Renderer pygame pour swarm-sim.
 
@@ -23,7 +26,8 @@ import pygame
 from core.world import World
 from entities import drone
 from visualization.utils import to_raw, blit_centered, make_raw_surface
-
+from pathlib import Path
+import numpy as np
 
 # ── Configuration ──────────────────────────────────────────────────────────────
 
@@ -34,9 +38,9 @@ WORLD_BORDER = (40, 55, 80)   # bordure du monde
 
 DRONE_COLOR          = (80, 200, 255)
 DRONE_WORLD_SIZE     = 30
-DRONE_MIN_RADIUS     = 20
+DRONE_MIN_RADIUS     = 25
 DRONE_RADIUS         = 100     # rayon de base en pixels
-DRONE_SCALE_EXPONENT = 0.5   # 0 = taille fixe, 1 = scale complet avec zoom
+DRONE_SCALE_EXPONENT = 0.85   # 0 = taille fixe, 1 = scale complet avec zoom
 
 MINIMAP_RATIO_W = 0.18
 MINIMAP_RATIO_H = 0.20
@@ -44,7 +48,6 @@ MINIMAP_PAD     = 10
 MINIMAP_BG      = (10, 12, 20)
 MINIMAP_BORDER  = (50, 70, 100)
 VIEWPORT_COLOR  = (80, 200, 255)
-from pathlib import Path
 _ROOT = Path(__file__).parent.parent
 
 # Chemin vers l'image de fond (None = pas de fond)
@@ -94,6 +97,26 @@ def draw_world_raw(
     # ── fond de carte ──
     if background is not None:
         surface.blit(background, (0, 0))
+    
+    alive_ids = np.where(world.alive_mask)[0]
+    detected, friendly = detection.update(world)
+    enemy_in_range = np.any(detected & ~friendly, axis=1)
+
+    for idx, drone_id in enumerate(alive_ids):
+        x, y = to_raw(
+            world.positions[drone_id][0], world.positions[drone_id][1],
+            world.W, world.H, raw_w, raw_h,
+        )
+        r   = max(4, int(world.components.arr("sensor_radius")[drone_id] / world.W * raw_w))
+        col = (200, 60, 60) if enemy_in_range[idx] else (80, 150, 255)
+
+        circle_surf = pygame.Surface((r * 2, r * 2), pygame.SRCALPHA)
+        pygame.draw.circle(circle_surf, col + (25,),  (r, r), r)
+        pygame.draw.circle(circle_surf, col + (180,), (r, r), r, 1)
+        surface.blit(circle_surf, (x - r, y - r))
+
+
+
 
     # ── terrain, zones... ──
 

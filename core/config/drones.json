@@ -19,7 +19,7 @@
     "type":             "default",
     "display_name":     "Drone",
     "speed":            10.0,
-    "sensor_radius":    50.0,
+    "sensor_radius":    1000.0,
     "comm_radius":      150.0,
     "battery_capacity": 1,
     "max_force":        10.0,
@@ -34,19 +34,19 @@
     "type":         "fpv",
     "display_name": "FPV Kamikaze",
 
-    "speed":            28.0,
-    "max_force":        25.0,
+    "speed":            1000.0,
+    "max_force":       100.0,
     "mass":             1, 
 
-    "sensor_radius":    15.0,
+    "sensor_radius":    1500.0,
     "comm_radius":      80.0,
     
     
     "battery_model":     "lipo",
     "battery_knee":      0.12,
     "battery_steepness": 30,
-    "power_idle":  0.0001,    
-    "power_max_steer": 0.1
+    "power_idle":  0.005,    
+    "power_max_steer": 0.01
   },
 
   "mavic_isr": {
@@ -55,7 +55,7 @@
     "display_name": "Mavic ISR",
 
     "speed":            120.0,
-    "sensor_radius":    120.0,
+    "sensor_radius":    1200.0,
     "comm_radius":      200.0,
     "max_force":        100.0,
     "mass":             0.9,

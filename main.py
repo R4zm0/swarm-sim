@@ -6,8 +6,14 @@ from core.world import World
 from visualization.renderer import run
 import systems.movement as movement
 import systems.battery as battery
-world = World()
+from core.components import ComponentStore  # ← nouveau
+from entities.types import DroneMode        # ← nouveau, utilisé dans _INITIAL_STATE
 
+
+
+world = World()
+world.add_drone("fpv",      position=np.array([200.0, 300.0]), team=0)
+world.add_drone("mavic_isr", position=np.array([500.0, 500.0]), team=1)
 world.add_drone("fpv", position=np.array([200.0, 300.0]))
 world.targets[0] = np.array([7000.0, 5000.0])   # target du drone 0
 world.drones[0].speed = 1000 
