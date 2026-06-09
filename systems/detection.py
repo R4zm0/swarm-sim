@@ -16,32 +16,32 @@ Pour retrouver l'id réel : alive_ids = np.where(world.alive_mask)[0]
 
 import numpy as np
 from core.world import World
+from utils.spatial import distance_matrix
 
 
-def update(world: World) -> tuple[np.ndarray, np.ndarray]:
+def update(
+    world:     World,
+    distances: np.ndarray | None = None,   # précalculé par TickContext si dispo
+    alive_ids: np.ndarray | None = None,
+) -> tuple[np.ndarray, np.ndarray]:
     """
     Retourne :
         detected (N_alive, N_alive) bool
         friendly (N_alive, N_alive) bool
-
-
-        pour chaque drone i, j :
-        detected_friends = detected &  friendly
-        detected_enemies = detected & ~friendly   # à la demande, une ligne
     """
-    alive_ids = np.where(world.alive_mask)[0]
-    n         = len(alive_ids)
+    if alive_ids is None:
+        alive_ids = np.where(world.alive_mask)[0]
 
+    n = len(alive_ids)
     if n == 0:
         empty = np.zeros((0, 0), dtype=bool)
         return empty, empty
 
-    positions = world.positions[alive_ids]                              # (N, 2)
+    if distances is None:
+        positions        = world.positions[alive_ids]
+        _, distances     = distance_matrix(positions)
 
-    # diff[i, j] = vecteur de i vers j
-    diff      = positions[np.newaxis, :, :] - positions[:, np.newaxis, :]  #    (1,N,2) - (N,1,2) ou vecteur de taile N de vecteur de R² = (N, N, 2)
-    distances = np.linalg.norm(diff, axis=2)                               # (N, N) matrice des distnace entre chaque paire de drones vivants, symétrique, avec des 0 sur la diagonale
-
+    # ── Dans le rayon ────────────────────────────────────────────────────────
     sensor_radii = (
         world.components.arr("sensor_radius")[alive_ids]
         * world.components.arr("sensor_efficiency")[alive_ids]
@@ -52,24 +52,23 @@ def update(world: World) -> tuple[np.ndarray, np.ndarray]:
     np.fill_diagonal(in_range, False)                    # un drone ne se détecte pas lui-même
 
     # ── Ami / ennemi ──────────────────────────────────────────────────────────
-    teams    = world.components.arr("team")[alive_ids]          # (N,)
-    friendly = teams[:, np.newaxis] == teams[np.newaxis, :]     # (N, N) avec newaxis pour comparer chaque paire (i, j), à gauche de l'égalité ça repète en ligne, à droite en colonne
+    teams    = world.components.arr("team")[alive_ids]
+    friendly = teams[:, np.newaxis] == teams[np.newaxis, :]
 
-    detected = in_range
-    return detected, friendly
-    
+    return in_range, friendly
+
 
 def detected_by(
     detected: np.ndarray,
     friendly: np.ndarray,
-) :
+) -> tuple[list, list]:
     """
     Utilitaire : pour chaque drone, liste des indices détectés amis / ennemis.
     Utile dans decision.py pour la logique individuelle.
 
     Retourne :
-        friends_per_drone  list[np.ndarray]  — indices des amis détectés par drone i
-        enemies_per_drone  list[np.ndarray]  — indices des ennemis détectés par drone i
+        friends_per_drone  list[np.ndarray]
+        enemies_per_drone  list[np.ndarray]
     """
     friends_per_drone = [
         np.where(detected[i] &  friendly[i])[0]

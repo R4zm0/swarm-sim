@@ -1,0 +1,33 @@
+{
+  "name": "patrol_rectangle",
+  "description": "Zone de test — overrides vitesse/force, coverage avec decay lent",
+
+  "world": {
+    "width":  19200,
+    "height": 10800
+  },
+
+  "zone": {
+    "vertices": [
+      [3000, 2000],
+      [12000, 2000],
+      [12000, 8000],
+      [3000, 8000]
+    ]
+  },
+
+  "spawn": [3000, 2000],
+
+  "coverage": {
+    "n_samples": 500,
+    "decay":     0.0005, 
+    "threshold": 0.5
+  },
+
+  "drones": [
+    { "type": "mavic_isr", "team": 0, "speed": 1500, "max_force": 15000 },
+    { "type": "mavic_isr", "team": 0, "speed": 1500, "max_force": 15000 },
+    { "type": "mavic_isr", "team": 0, "speed": 1500, "max_force": 15000 },
+    { "type": "mavic_isr", "team": 0, "speed": 1500, "max_force": 15000 }
+  ]
+}

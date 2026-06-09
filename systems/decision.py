@@ -3,82 +3,109 @@
 Comportements de navigation — écrit dans world.targets (N, 2).
 
 Flux :
-    decision.update(world, detected, friendly)
+    decision.update(world, ctx, zone)
         → world.targets mis à jour
         → movement.py lit world.targets au tick suivant
 
-Comportements implémentés :
-    separation  — répulsion entre alliés proches, vectorisé
+Comportements :
+    patrol      — patrouille équidistante sur le périmètre de zone
+    separation  — répulsion entre alliés trop proches (anti-collision)
+
+ctx  : TickContext (voir core/scheduler.py)
+zone : PatrolZone  (voir environment/zone.py)
 """
 
 import numpy as np
 from core.world import World
-from utils.spatial import distance_matrix
+
+
+# ── Patrouille ────────────────────────────────────────────────────────────────
+
+def _patrol(world: World, ctx, zone) -> None:
+    """
+    Chaque drone se projette sur le périmètre, calcule sa progression courante,
+    puis reçoit une target équidistante des autres drones + un lookahead.
+
+    Pas d'état stocké — progress_from_position() recalcule depuis la position
+    réelle à chaque tick. Auto-correctif, aucune erreur accumulée.
+
+    Redistribution automatique : si un drone meurt, les survivants se projettent
+    toujours sur le périmètre et les positions idéales se recalculent pour n-1.
+    """
+    alive_ids = ctx.alive_ids
+    n         = len(alive_ids)
+    if n == 0:
+        return
+
+    P         = zone.perimeter
+    positions = world.positions[alive_ids]
+
+    # 1. Projection de chaque drone sur le périmètre
+    progresses = np.array([
+        zone.progress_from_position(positions[i])
+        for i in range(n)
+    ])  # (N,)
+
+    # 2. Tri par progression courante
+    sort_order = np.argsort(progresses)
+    base       = progresses[sort_order[0]]
+    ideal_gap  = P / n
+
+    # 3. Lookahead : avance en avance de la moitié d'un intervalle
+    #    Clamp pour éviter que le lookahead dépasse le périmètre
+    lookahead = min(ideal_gap * 0.4, 500.0)
+
+    # 4. Target = position idéale + lookahead vers l'avant
+    for rank in range(n):
+        drone_idx      = sort_order[rank]
+        drone_id       = alive_ids[drone_idx]
+        ideal_progress = (base + rank * ideal_gap) % P
+        target_d       = (ideal_progress + lookahead) % P
+        world.targets[drone_id] = zone.point_at(target_d)
 
 
 # ── Séparation ────────────────────────────────────────────────────────────────
 
-def separation_forces(
-    diff:      np.ndarray,   # (N, N, 2) — diff[i,j] = pos[i] - pos[j]
-    distances: np.ndarray,   # (N, N)
-    ally_mask: np.ndarray,   # (N, N) bool — True si j est un allié détecté de i
-    min_dist:  float = 1.0,  # évite division par zéro
-) -> np.ndarray:
+def _separation(world: World, ctx, weight: float = 0.3) -> np.ndarray:
     """
-    Force de répulsion de i par rapport à tous ses alliés détectés j.
-
-        F[i] = Σ_j  (pos[i] - pos[j]) / dist(i,j)²   pour j allié dans rayon
-
-    Plus j est proche, plus il repousse fort (inverse distance²).
-
-    Retourne
-    --------
-    forces : (N, 2) — non normalisé, à combiner avec les autres comportements
+    Force de répulsion entre alliés proches — anti-collision.
+    Retourne un vecteur (N_alive, 2) normalisé.
+    Pondéré par `weight` avant d'être combiné avec le patrol.
     """
-    # évite division par zéro sur la diagonale et hors rayon
-    safe_dist = np.where(ally_mask & (distances > 0), distances, np.inf)
-    weights   = 1.0 / safe_dist ** 2           # (N, N) — 0 hors rayon
+    alive_ids = ctx.alive_ids
+    ally_mask = ctx.detected & ctx.friendly
 
-    # Σ_j diff[i,j] * weight[i,j]
-    forces = np.sum(
-        diff * weights[:, :, np.newaxis],       # (N, N, 2)
-        axis=1,                                 # → (N, 2)
-    )
-    return forces
+    safe_dist = np.where(ally_mask & (ctx.distances > 0), ctx.distances, np.inf)
+    weights   = 1.0 / safe_dist ** 2
+
+    forces = np.sum(ctx.diff * weights[:, :, np.newaxis], axis=1)  # (N, 2)
+
+    norms  = np.linalg.norm(forces, axis=1, keepdims=True)
+    return np.where(norms > 1e-6, forces / norms, 0.0) * weight
 
 
 # ── Update principal ──────────────────────────────────────────────────────────
 
-def update(
-    world:     World,
-    ctx : TickContext,   # (N_alive, N_alive) bool
-) -> None:
-    detected = ctx.detected
-    friendly = ctx.friendly
-
+def update(world: World, ctx, zone=None) -> None:
     """
-    Calcule les targets de navigation et les écrit dans world.targets.
-
-    Comportement actuel : separation uniquement.
-    À étendre : cohésion, alignment, seek target, flee enemy...
+    Si zone fournie : comportement patrol + séparation.
+    Sinon : séparation seule (fallback pour tests sans scénario).
     """
-    alive_ids = np.where(world.alive_mask)[0]
+    alive_ids = ctx.alive_ids
     if len(alive_ids) == 0:
         return
 
-    positions  = world.positions[alive_ids]           # (N, 2)
-    diff, distances = distance_matrix(positions)
-
-    ally_mask  = detected & friendly                  # (N, N)
-
-    sep = separation_forces(diff, distances, ally_mask)  # (N, 2)
-
-    # Normalise — direction pure, magnitude gérée par movement.py
-    norms = np.linalg.norm(sep, axis=1, keepdims=True)
-    sep   = np.where(norms > 1e-6, sep / norms, 0.0)
-
-    # Écrit dans world.targets — movement.py s'en charge au tick suivant
-    # Pour l'instant : target = position + direction de séparation
-    # À combiner avec d'autres comportements (seek, flee...) plus tard
-    world.targets[alive_ids] = positions + sep * 500.0
-    world.targets = np.clip(world.targets, [0, 0], [world.W, world.H])
+    if zone is not None:
+        _patrol(world, ctx, zone)
+        # Ajuste légèrement les targets avec la force de séparation
+        sep = _separation(world, ctx, weight=300.0)
+        world.targets[alive_ids] += sep
+        world.targets = np.clip(world.targets, [0, 0], [world.W, world.H])
+    else:
+        # fallback sans zone
+        positions = world.positions[alive_ids]
+        sep = _separation(world, ctx, weight=1.0)
+        norms = np.linalg.norm(sep, axis=1, keepdims=True)
+        sep   = np.where(norms > 1e-6, sep / norms, 0.0)
+        world.targets[alive_ids] = positions + sep * 500.0
+        world.targets = np.clip(world.targets, [0, 0], [world.W, world.H])
