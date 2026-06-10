@@ -30,6 +30,7 @@ class ComponentStore:
         "sensor_efficiency",
         "mode",
         "messages",
+        "patrol_progress",
     })
 
     def __init__(self) -> None:
@@ -91,19 +92,34 @@ class ComponentStore:
         """
         Sérialise uniquement les composants mutables (état de mission).
         Config immuable (speed, mass...) non incluse — rechargée depuis JSON au load.
+        Les enums (DroneMode) sont convertis en string pour la sérialisation JSON.
         """
         result = {}
         for name in self.MUTABLE:
             if name in self._floats:
                 result[name] = self._floats[name].tolist()
             elif name in self._objects:
-                result[name] = self._objects[name].copy()
+                # Convertit les enums en string pour JSON
+                result[name] = [
+                    v.name if hasattr(v, "name") and hasattr(v, "value") else v
+                    for v in self._objects[name]
+                ]
         return result
 
     def load_state(self, state: dict) -> None:
-        """Restore depuis un state_dict."""
+        """
+        Restore depuis un state_dict.
+        Reconvertit les strings en enums si nécessaire.
+        """
+        from entities.types import DroneMode
         for name, values in state.items():
             if name in self._floats:
                 self._floats[name] = np.array(values, dtype=float)
             elif name in self._objects:
-                self._objects[name] = list(values)
+                if name == "mode":
+                    self._objects[name] = [
+                        DroneMode[v] if isinstance(v, str) else v
+                        for v in values
+                    ]
+                else:
+                    self._objects[name] = list(values)

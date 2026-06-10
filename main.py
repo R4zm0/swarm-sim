@@ -1,19 +1,28 @@
 # main.py
 import threading
 import time
-from core.scenario_loader import load
 from core.scheduler import Scheduler
+from core.save_load import load_state
+from visualization.mission_select import run_select
 from visualization.renderer import run
 
-world, zone, coverage = load("data/scenarios/scenario_example.json")
+# ── Sélection de mission ───────────────────────────────────────────────────────
+result = run_select()
+if result is None:
+    exit()
+
+world     = result["world"]
+zone      = result["zone"]
+coverage  = result["coverage"]
+save_path = str(result["scenario_path"]).replace("scenarios", "saves")
+
 scheduler = Scheduler(zone=zone, coverage_map=coverage)
 
-# État partagé renderer ↔ sim loop
-sim_state = {
-    "paused": False,
-    "speed":  1.0,    # multiplicateur : 0.25 / 0.5 / 1 / 2 / 4 / 8
-    "step":   False,  # True = avancer d'un tick puis repasser à False
-}
+if result["save_to_restore"] is not None:
+    load_state(world, scheduler, coverage, result["save_to_restore"])
+
+# ── Sim ───────────────────────────────────────────────────────────────────────
+sim_state = {"paused": False, "speed": 1.0, "step": False}
 
 def sim_loop():
     dt = 1 / 60
@@ -26,4 +35,4 @@ def sim_loop():
         time.sleep(dt / max(0.1, sim_state["speed"]))
 
 threading.Thread(target=sim_loop, daemon=True).start()
-run(world, zone, coverage, sim_state=sim_state)
+run(world, zone, coverage, sim_state=sim_state, scheduler=scheduler, save_path=save_path)

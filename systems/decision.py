@@ -3,109 +3,90 @@
 Comportements de navigation — écrit dans world.targets (N, 2).
 
 Flux :
-    decision.update(world, ctx, zone)
+    decision.update(world, ctx, zone, dt)
         → world.targets mis à jour
         → movement.py lit world.targets au tick suivant
 
 Comportements :
-    patrol      — patrouille équidistante sur le périmètre de zone
-    separation  — répulsion entre alliés trop proches (anti-collision)
+    patrol           — chaque drone avance patrol_d à sa propre vitesse
+    react_to_enemy   — réaction quand un drone détecte un ennemi fixe
 
-ctx  : TickContext (voir core/scheduler.py)
-zone : PatrolZone  (voir environment/zone.py)
+patrol_d avance de speed * dt par tick — pas de projection géométrique
+pendant le trajet. Résultat déterministe, équidistance garantie par construction.
 """
 
 import numpy as np
 from core.world import World
+from entities.types import DroneMode
 
 
 # ── Patrouille ────────────────────────────────────────────────────────────────
 
-def _patrol(world: World, ctx, zone) -> None:
+def _patrol(world: World, ctx, zone, dt: float) -> None:
     """
-    Chaque drone se projette sur le périmètre, calcule sa progression courante,
-    puis reçoit une target équidistante des autres drones + un lookahead.
+    Avance patrol_progress de speed * dt par tick.
+    Target = zone.point_at(patrol_d + lookahead).
 
-    Pas d'état stocké — progress_from_position() recalcule depuis la position
-    réelle à chaque tick. Auto-correctif, aucune erreur accumulée.
+    Pas de progress_from_position pendant le trajet — aucune ambiguïté
+    sur quelle arête est la plus proche.
 
-    Redistribution automatique : si un drone meurt, les survivants se projettent
-    toujours sur le périmètre et les positions idéales se recalculent pour n-1.
+    Équidistance : garantie par les valeurs initiales i * P/n.
+    Si un drone meurt, le gap se referme naturellement au prochain tour complet.
     """
     alive_ids = ctx.alive_ids
     n         = len(alive_ids)
     if n == 0:
         return
 
-    P         = zone.perimeter
-    positions = world.positions[alive_ids]
+    P        = zone.perimeter
+    lookahead = min(P / n * 0.35, 800.0)
+    patrol_d  = world.components.arr("patrol_progress")
+    speeds    = world.components.arr("speed")[alive_ids]
 
-    # 1. Projection de chaque drone sur le périmètre
-    progresses = np.array([
-        zone.progress_from_position(positions[i])
-        for i in range(n)
-    ])  # (N,)
+    # Avance patrol_d à la vitesse propre de chaque drone
+    patrol_d[alive_ids] = (patrol_d[alive_ids] + speeds * dt) % P
 
-    # 2. Tri par progression courante
-    sort_order = np.argsort(progresses)
-    base       = progresses[sort_order[0]]
-    ideal_gap  = P / n
-
-    # 3. Lookahead : avance en avance de la moitié d'un intervalle
-    #    Clamp pour éviter que le lookahead dépasse le périmètre
-    lookahead = min(ideal_gap * 0.4, 500.0)
-
-    # 4. Target = position idéale + lookahead vers l'avant
-    for rank in range(n):
-        drone_idx      = sort_order[rank]
-        drone_id       = alive_ids[drone_idx]
-        ideal_progress = (base + rank * ideal_gap) % P
-        target_d       = (ideal_progress + lookahead) % P
-        world.targets[drone_id] = zone.point_at(target_d)
+    # Target = point sur le périmètre légèrement en avance
+    for drone_id in alive_ids:
+        world.targets[drone_id] = zone.point_at(
+            (patrol_d[drone_id] + lookahead) % P
+        )
 
 
-# ── Séparation ────────────────────────────────────────────────────────────────
+# ── Réaction ennemi ───────────────────────────────────────────────────────────
 
-def _separation(world: World, ctx, weight: float = 0.3) -> np.ndarray:
+def react_to_enemy(world: World, ctx) -> None:
     """
-    Force de répulsion entre alliés proches — anti-collision.
-    Retourne un vecteur (N_alive, 2) normalisé.
-    Pondéré par `weight` avant d'être combiné avec le patrol.
+    Contact ennemi → mode EMERGENCY (rouge dans le renderer).
+    Plus de contact → retour ACTIVE.
+    Comportement de navigation inchangé — extension future ici.
     """
-    alive_ids = ctx.alive_ids
-    ally_mask = ctx.detected & ctx.friendly
-
-    safe_dist = np.where(ally_mask & (ctx.distances > 0), ctx.distances, np.inf)
-    weights   = 1.0 / safe_dist ** 2
-
-    forces = np.sum(ctx.diff * weights[:, :, np.newaxis], axis=1)  # (N, 2)
-
-    norms  = np.linalg.norm(forces, axis=1, keepdims=True)
-    return np.where(norms > 1e-6, forces / norms, 0.0) * weight
+    for local_i, drone_id in enumerate(ctx.alive_ids):
+        if ctx.enemy_contact[local_i]:
+            world.components.set("mode", drone_id, DroneMode.EMERGENCY)
+        elif world.components.get("mode", drone_id) is DroneMode.EMERGENCY:
+            world.components.set("mode", drone_id, DroneMode.ACTIVE)
 
 
 # ── Update principal ──────────────────────────────────────────────────────────
 
-def update(world: World, ctx, zone=None) -> None:
-    """
-    Si zone fournie : comportement patrol + séparation.
-    Sinon : séparation seule (fallback pour tests sans scénario).
-    """
+def update(world: World, ctx, zone=None, dt: float = 1/60) -> None:
     alive_ids = ctx.alive_ids
     if len(alive_ids) == 0:
         return
 
+    react_to_enemy(world, ctx)
+
     if zone is not None:
-        _patrol(world, ctx, zone)
-        # Ajuste légèrement les targets avec la force de séparation
-        sep = _separation(world, ctx, weight=300.0)
-        world.targets[alive_ids] += sep
-        world.targets = np.clip(world.targets, [0, 0], [world.W, world.H])
+        _patrol(world, ctx, zone, dt)
     else:
-        # fallback sans zone
+        # Fallback sans zone : séparation simple
         positions = world.positions[alive_ids]
-        sep = _separation(world, ctx, weight=1.0)
-        norms = np.linalg.norm(sep, axis=1, keepdims=True)
-        sep   = np.where(norms > 1e-6, sep / norms, 0.0)
+        ally_mask = ctx.detected & ctx.friendly
+        safe_dist = np.where(ally_mask & (ctx.distances > 0), ctx.distances, np.inf)
+        weights   = 1.0 / safe_dist ** 2
+        forces    = np.sum(ctx.diff * weights[:, :, np.newaxis], axis=1)
+        norms     = np.linalg.norm(forces, axis=1, keepdims=True)
+        sep       = np.where(norms > 1e-6, forces / norms, 0.0)
         world.targets[alive_ids] = positions + sep * 500.0
         world.targets = np.clip(world.targets, [0, 0], [world.W, world.H])

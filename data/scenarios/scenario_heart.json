@@ -1,0 +1,43 @@
+{
+  "name": "heart_patrol",
+  "description": "Patrouille en forme de coeur — essaim homogène, ennemis sur le périmètre",
+
+  "world": {
+    "width":  19200,
+    "height": 10800
+  },
+
+  "zone": {
+    "vertices": [
+      [9600, 3800], [9732, 3286], [10510, 2288], [11972, 1869],
+      [13454, 2576], [14080, 4080], [13454, 5732], [11972, 7213],
+      [10510, 8524], [9732, 9552], [9600, 9960], [9468, 9552],
+      [8690, 8524], [7228, 7213], [5746, 5732], [5120, 4080],
+      [5746, 2576], [7228, 1869], [8690, 2288], [9468, 3286]
+    ]
+  },
+
+  "spawn": [9600, 3800],
+
+  "coverage": {
+    "n_samples": 500,
+    "decay":     0.0005,
+    "threshold": 0.5
+  },
+
+  "enemies": [
+    { "position": [9600, 3800] },
+    { "position": [13721, 3216] },
+    { "position": [11335, 7784] },
+    { "position": [7865, 7784] },
+    { "position": [5479, 3216] }
+  ],
+
+  "drones": [
+    { "type": "mavic_isr", "team": 0, "speed": 1500, "max_force": 15000 },
+    { "type": "mavic_isr", "team": 0, "speed": 1500, "max_force": 15000 },
+    { "type": "mavic_isr", "team": 0, "speed": 1500, "max_force": 15000 },
+    { "type": "mavic_isr", "team": 0, "speed": 1000, "max_force": 15000 },
+    { "type": "mavic_isr", "team": 0, "speed": 1500, "max_force": 15000 }
+  ]
+}

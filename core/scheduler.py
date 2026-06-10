@@ -3,8 +3,8 @@
 TickContext + Scheduler — orchestration d'un tick de simulation.
 
 Ordre d'un tick :
-    1. TickContext   — distances + détection
-    2. decision      → world.targets
+    1. TickContext   — distances + détection drones + contact ennemis
+    2. decision      → world.targets  (+ réaction ennemis)
     3. movement      → positions, velocities  |  raw_steering → ctx
     4. battery       ← ctx.raw_steering
     5. coverage      → coverage_map
@@ -12,7 +12,7 @@ Ordre d'un tick :
 """
 
 import numpy as np
-import systems.decision  as decision
+import systems.decision_extra  as decision
 import systems.movement  as movement
 import systems.battery   as battery
 import systems.detection as detection
@@ -25,12 +25,13 @@ class TickContext:
 
     Attributs
     ---------
-    alive_ids     (N,)        indices des drones vivants
-    diff          (N, N, 2)   diff[i,j] = pos[i] - pos[j]
-    distances     (N, N)      distances euclidiennes
-    detected      (N, N) bool
-    friendly      (N, N) bool
-    raw_steering  (N_total, 2)
+    alive_ids      (N,)        indices des drones vivants
+    diff           (N, N, 2)   diff[i,j] = pos[i] - pos[j]
+    distances      (N, N)      distances euclidiennes
+    detected       (N, N) bool detected[i,j] = True si i détecte j
+    friendly       (N, N) bool True si même équipe
+    enemy_contact  (N,)   bool True si le drone i voit au moins un ennemi fixe
+    raw_steering   (N_total, 2)
     """
 
     def __init__(self, world) -> None:
@@ -39,19 +40,34 @@ class TickContext:
 
         n = len(self.alive_ids)
         if n == 0:
-            self.diff      = np.zeros((0, 0, 2))
-            self.distances = np.zeros((0, 0))
-            self.detected  = np.zeros((0, 0), dtype=bool)
-            self.friendly  = np.zeros((0, 0), dtype=bool)
+            self.diff          = np.zeros((0, 0, 2))
+            self.distances     = np.zeros((0, 0))
+            self.detected      = np.zeros((0, 0), dtype=bool)
+            self.friendly      = np.zeros((0, 0), dtype=bool)
+            self.enemy_contact = np.zeros(0, dtype=bool)
             return
 
         positions             = world.positions[self.alive_ids]
         self.diff, self.distances = distance_matrix(positions)
+
         self.detected, self.friendly = detection.update(
             world,
             distances=self.distances,
             alive_ids=self.alive_ids,
         )
+
+        # ── Contact ennemis fixes ─────────────────────────────────────────────
+        E = len(world.enemy_positions)
+        if E > 0:
+            diff_e = positions[:, np.newaxis, :] - world.enemy_positions[np.newaxis, :, :]
+            dist_e = np.linalg.norm(diff_e, axis=2)                    # (N, E)
+            sensor_radii = (
+                world.components.arr("sensor_radius")[self.alive_ids]
+                * world.components.arr("sensor_efficiency")[self.alive_ids]
+            )
+            self.enemy_contact = np.any(dist_e < sensor_radii[:, np.newaxis], axis=1)
+        else:
+            self.enemy_contact = np.zeros(n, dtype=bool)
 
 
 class Scheduler:
@@ -67,7 +83,7 @@ class Scheduler:
         if ctx.alive_ids.size == 0:
             return
 
-        decision.update(world, ctx, self.zone)
+        decision.update(world, ctx, self.zone, dt)
 
         max_speeds       = world.effective_speeds()
         desired          = movement.desired_from_targets(world.positions, world.targets, max_speeds)
