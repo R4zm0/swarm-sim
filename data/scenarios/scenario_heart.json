@@ -1,6 +1,9 @@
 {
   "name": "heart_patrol",
   "description": "Patrouille en forme de coeur — essaim homogène, ennemis sur le périmètre",
+  "background": "background_2.png",
+
+
 
   "world": {
     "width":  19200,
@@ -34,10 +37,11 @@
   ],
 
   "drones": [
-    { "type": "mavic_isr", "team": 0, "speed": 1500, "max_force": 15000 },
-    { "type": "mavic_isr", "team": 0, "speed": 1500, "max_force": 15000 },
-    { "type": "mavic_isr", "team": 0, "speed": 1500, "max_force": 15000 },
-    { "type": "mavic_isr", "team": 0, "speed": 1500, "max_force": 15000 },
-    { "type": "mavic_isr", "team": 0, "speed": 1500, "max_force": 15000 }
+    { "type": "shahed", "team": 0},
+    { "type": "shahed", "team": 0},
+    { "type": "shahed", "team": 0},
+    { "type": "mavic_isr", "team": 0},
+    { "type": "mavic_isr", "team": 0},
+    { "type": "shahed", "team": 0}
   ]
 }

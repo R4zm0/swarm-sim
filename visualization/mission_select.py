@@ -64,18 +64,21 @@ def _scan_scenarios() -> list[dict]:
     return out
 
 
-def _scan_saves() -> list[dict]:
+def _scan_saves(scenario_name: str = "") -> list[dict]:
+    """Scanne les saves du scénario donné (ou tous si scenario_name vide)."""
     SAVES_DIR.mkdir(parents=True, exist_ok=True)
+    pattern = f"{scenario_name}/*.json" if scenario_name else "*/*.json"
     out = []
-    for p in sorted(SAVES_DIR.glob("*.json"), key=lambda x: x.stat().st_mtime, reverse=True):
+    for p in sorted(SAVES_DIR.glob(pattern), key=lambda x: x.stat().st_mtime, reverse=True):
         try:
             with open(p) as f:
                 d = json.load(f)
             out.append({
-                "path":     p,
-                "name":     p.stem,
-                "tick":     d["meta"]["tick"],
-                "date":     d["meta"]["saved_at"][:16].replace("T", " "),
+                "path":          p,
+                "name":          p.stem,
+                "scenario_name": p.parent.name,
+                "tick":          d["meta"]["tick"],
+                "date":          d["meta"]["saved_at"][:16].replace("T", " "),
             })
         except Exception:
             pass
@@ -92,9 +95,9 @@ def run_select(width: int = 900, height: int = 560) -> dict | None:
     clock  = pygame.font.init() or pygame.time.Clock()
     clock  = pygame.time.Clock()
 
-    font_sm  = pygame.font.SysFont("Courier New", 11)
-    font_med = pygame.font.SysFont("Courier New", 13)
-    font_lg  = pygame.font.SysFont("Courier New", 17, bold=True)
+    font_sm  = pygame.font.SysFont("Segoe UI,Helvetica,DejaVu Sans,Arial", 12)
+    font_med = pygame.font.SysFont("Segoe UI,Helvetica,DejaVu Sans,Arial", 14)
+    font_lg  = pygame.font.SysFont("Segoe UI,Helvetica,DejaVu Sans,Arial", 22, bold=True)
 
     scenarios = _scan_scenarios()
     saves     = _scan_saves()
@@ -129,7 +132,7 @@ def run_select(width: int = 900, height: int = 560) -> dict | None:
                 if event.key == pygame.K_ESCAPE:
                     running = False
                 elif event.key == pygame.K_RETURN and sel_scenario >= 0:
-                    result  = _build_result(scenarios[sel_scenario], saves, sel_save)
+                    result  = _build_result(scenarios[sel_scenario], filtered_saves, sel_save)
                     running = False
 
             elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
@@ -142,11 +145,11 @@ def run_select(width: int = 900, height: int = 560) -> dict | None:
                 # saves
                 for i, rect in enumerate(sv_rects):
                     if rect.collidepoint(mx, my):
-                        sel_save = i
+                        sel_save = i  # index dans filtered_saves
 
                 # bouton démarrer
                 if btn_rect.collidepoint(mx, my) and sel_scenario >= 0:
-                    result  = _build_result(scenarios[sel_scenario], saves, sel_save)
+                    result  = _build_result(scenarios[sel_scenario], filtered_saves, sel_save)
                     running = False
 
         # ── Rendu ─────────────────────────────────────────────────────────────
@@ -168,10 +171,8 @@ def run_select(width: int = 900, height: int = 560) -> dict | None:
         screen.blit(hdr, (lx, top_y - 22))
         pygame.draw.line(screen, ACCENT_DIM, (lx, top_y - 6), (lx + col_w - PAD, top_y - 6), 1)
 
-        panel_sc = pygame.Surface((col_w - PAD, list_h), pygame.SRCALPHA)
-        panel_sc.fill((*PANEL_BG, 220))
-        pygame.draw.rect(panel_sc, BORDER, (0, 0, col_w - PAD, list_h), 1)
-        screen.blit(panel_sc, (lx, top_y))
+        pygame.draw.rect(screen, PANEL_BG, (lx, top_y, col_w - PAD, list_h))
+        pygame.draw.rect(screen, BORDER, (lx, top_y, col_w - PAD, list_h), 1)
 
         sc_rects = []
         hover_sc = -1
@@ -180,42 +181,43 @@ def run_select(width: int = 900, height: int = 560) -> dict | None:
             sc_rects.append(rect)
             if rect.collidepoint(mx, my):
                 hover_sc = i
-            sub_txt = f"{sc['n_drones']} drones · {sc['n_enemies']} ennemis — {sc['description'][:35]}"
+            sub_txt = f"{sc['n_drones']} drones, {sc['n_enemies']} ennemis, {sc['description'][:35]}"
             _draw_row(screen, rect, sc["name"], sub_txt, i == sel_scenario, i == hover_sc, font_med, font_sm)
 
         if not scenarios:
             msg = font_sm.render("Aucun scénario dans data/scenarios/", True, TEXT_DIM)
             screen.blit(msg, (lx + PAD, top_y + list_h // 2))
 
-        # ── colonne droite — saves ────────────────────────────────────────────
+        # ── colonne droite — saves filtrées par scénario sélectionné ─────────
         rx  = sw // 2 + PAD
-        hdr = font_med.render("REPRENDRE", True, ACCENT)
+        sc_name_sel = scenarios[sel_scenario]["name"] if sel_scenario >= 0 else ""
+        filtered_saves = [s for s in saves if s["scenario_name"] == sc_name_sel] if sc_name_sel else []
+
+        hdr = font_med.render(f"REPRENDRE, {sc_name_sel or '(aucun)'}", True, ACCENT)
         screen.blit(hdr, (rx, top_y - 22))
         pygame.draw.line(screen, ACCENT_DIM, (rx, top_y - 6), (rx + col_w - PAD, top_y - 6), 1)
 
-        panel_sv = pygame.Surface((col_w - PAD, list_h), pygame.SRCALPHA)
-        panel_sv.fill((*PANEL_BG, 220))
-        pygame.draw.rect(panel_sv, BORDER, (0, 0, col_w - PAD, list_h), 1)
-        screen.blit(panel_sv, (rx, top_y))
+        pygame.draw.rect(screen, PANEL_BG, (rx, top_y, col_w - PAD, list_h))
+        pygame.draw.rect(screen, BORDER, (rx, top_y, col_w - PAD, list_h), 1)
 
         sv_rects = []
         hover_sv = -1
-        for i, sv in enumerate(saves):
+        for i, sv in enumerate(filtered_saves):
             rect = pygame.Rect(rx, top_y + i * ROW_H, col_w - PAD, ROW_H)
             sv_rects.append(rect)
             if rect.collidepoint(mx, my):
                 hover_sv = i
-            sub_txt = f"tick {sv['tick']:,} · {sv['date']}"
+            sub_txt = f"{sv['scenario_name']}, tick {sv['tick']:,}, {sv['date']}"
             _draw_row(screen, rect, sv["name"], sub_txt, i == sel_save, i == hover_sv, font_med, font_sm)
 
-        if not saves:
-            msg = font_sm.render("Aucune sauvegarde", True, TEXT_DIM)
+        if not filtered_saves:
+            msg = font_sm.render("Aucune sauvegarde pour ce scénario", True, TEXT_DIM)
             screen.blit(msg, (rx + PAD, top_y + list_h // 2))
 
         # ── hint save sélectionné ─────────────────────────────────────────────
         if sel_save >= 0:
             hint = font_sm.render(
-                f"Reprendre : {saves[sel_save]['name']}  —  cliquez sur un scénario pour continuer",
+                f"Reprendre, {saves[sel_save]['name']}, cliquez sur un scénario pour continuer",
                 True, (120, 160, 100),
             )
             screen.blit(hint, (PAD, sh - 60))
@@ -229,7 +231,7 @@ def run_select(width: int = 900, height: int = 560) -> dict | None:
             bc = (30, 35, 42)
         pygame.draw.rect(screen, bc, btn_rect)
         pygame.draw.rect(screen, (60, 130, 80) if sel_scenario >= 0 else BORDER, btn_rect, 1)
-        lbl = font_med.render("DÉMARRER  ▶", True, TEXT_BRIGHT if sel_scenario >= 0 else TEXT_DIM)
+        lbl = font_med.render("DÉMARRER", True, TEXT_BRIGHT if sel_scenario >= 0 else TEXT_DIM)
         screen.blit(lbl, (btn_rect.centerx - lbl.get_width() // 2,
                            btn_rect.centery - lbl.get_height() // 2))
 
@@ -243,10 +245,16 @@ def _build_result(scenario: dict, saves: list, sel_save: int) -> dict:
     """Charge le monde depuis le scénario sélectionné."""
     from core.scenario_loader import load
     world, zone, coverage = load(scenario["path"])
+
+    # Fond de carte propre au scénario (champ "background" du JSON, optionnel)
+    with open(scenario["path"]) as f:
+        background = json.load(f).get("background")
+
     return {
         "world":           world,
         "zone":            zone,
         "coverage":        coverage,
         "scenario_path":   scenario["path"],
+        "background":      background,
         "save_to_restore": saves[sel_save]["path"] if sel_save >= 0 else None,
     }

@@ -1,288 +1,253 @@
 # visualization/save_panel.py
 """
-SaveLoadPanel — overlay pygame pour gérer les sauvegardes.
+SavePanel  : panneau de sauvegarde  (touche S)
+LoadPanel  : panneau de chargement  (touche L)
 
-Ouverture : touche S ou L dans la sim.
-La sim se met en pause automatiquement à l'ouverture.
+Deux panneaux distincts pour éviter les sauvegardes accidentelles.
+Les saves sont filtrées par scénario courant.
 
-UI :
-    ┌──────────────────────────────────┐
-    │  SAVES                      [X]  │
-    ├──────────────────────────────────┤
-    │  quicksave   tick 1234  2026-01  │  ← clic = charger
-    │  patrol_v2   tick 5678  2026-01  │
-    │  ...                             │
-    ├──────────────────────────────────┤
-    │  [nom_______________]  [SAUVER]  │
-    └──────────────────────────────────┘
+Style :
+    Fonds noirs opaques, texte blanc, police Arial.
+    Bouton fermer Windows classique : carré gris avec un X noir.
 """
 
-import json
 import pygame
 from pathlib import Path
-
-
-SAVES_DIR = Path("data/saves")
+from core.save_load import save, load_state, scan_saves, saves_dir
 
 # Palette
-BG          = (12, 14, 20, 235)
-BORDER      = (45, 55, 72)
-HEADER_BG   = (18, 22, 32)
-ROW_HOVER   = (30, 38, 55)
-ROW_SEL     = (35, 55, 90)
-TEXT        = (170, 180, 195)
-TEXT_DIM    = (80,  90, 110)
-TEXT_BRIGHT = (210, 220, 235)
-ACCENT      = (70, 130, 200)
-ACCENT_DIM  = (45,  80, 130)
-BTN_BG      = (35,  50,  75)
-BTN_HOVER   = (50,  75, 115)
-CLOSE_COL   = (160,  60,  60)
-INPUT_BG    = (18,  24,  36)
-INPUT_BD    = (55,  70,  95)
+PANEL_BG    = (15, 15, 18)
+HEADER_BG   = (35, 35, 45)
+BORDER      = (220, 220, 230)
+ROW_HOVER   = (45, 55, 75)
+TEXT        = (235, 235, 240)
+TEXT_DIM    = (140, 145, 155)
+ACCENT      = (90, 150, 220)
+BTN_SAVE    = (60, 130, 70)
+BTN_SAVE_HV = (80, 170, 90)
+INPUT_BG    = (25, 28, 35)
+INPUT_BD    = (160, 170, 185)
 
-W, H        = 440, 340
-ROW_H       = 34
-MAX_VISIBLE = 6
-PAD         = 14
+# Bouton fermer Windows classique
+CLOSE_BG       = (200, 200, 200)
+CLOSE_BG_HV    = (235, 100, 100)
+CLOSE_X        = (15, 15, 15)
+CLOSE_X_HV     = (255, 255, 255)
+CLOSE_W        = 24
 
-
-def _scan() -> list[dict]:
-    """Scanne data/saves/*.json et retourne les métadonnées triées par date."""
-    SAVES_DIR.mkdir(parents=True, exist_ok=True)
-    saves = []
-    for p in sorted(SAVES_DIR.glob("*.json"), key=lambda x: x.stat().st_mtime, reverse=True):
-        try:
-            with open(p) as f:
-                data = json.load(f)
-            saves.append({
-                "path":     p,
-                "name":     p.stem,
-                "tick":     data["meta"]["tick"],
-                "date":     data["meta"]["saved_at"][:16].replace("T", " "),
-            })
-        except Exception:
-            pass
-    return saves
+W_SAVE, H_SAVE = 360, 130
+W_LOAD, H_LOAD = 480, 340
+ROW_H          = 36
+MAX_VISIBLE    = 6
+PAD            = 14
 
 
-class SaveLoadPanel:
+def _draw_close_button(surface, rect, mouse_pos) -> None:
+    """Bouton fermer Windows classique : carré gris avec X noir."""
+    hover = rect.collidepoint(mouse_pos)
+    bg    = CLOSE_BG_HV if hover else CLOSE_BG
+    fg    = CLOSE_X_HV  if hover else CLOSE_X
+    pygame.draw.rect(surface, bg, rect)
+    pygame.draw.rect(surface, (60, 60, 60), rect, 1)
+    pad = 6
+    pygame.draw.line(surface, fg, (rect.x + pad, rect.y + pad), (rect.right - pad, rect.bottom - pad), 2)
+    pygame.draw.line(surface, fg, (rect.right - pad, rect.y + pad), (rect.x + pad, rect.bottom - pad), 2)
 
-    def __init__(self) -> None:
-        self.open      = False
-        self.saves     = []
-        self.scroll    = 0
-        self.hovered   = -1
-        self.name      = "quicksave"
-        self.cursor    = len(self.name)
+
+# ── Base ──────────────────────────────────────────────────────────────────────
+
+class _BasePanel:
+    def __init__(self):
+        self.open        = False
         self._was_paused = False
-        self._row_rects  = []
         self._close_rect = pygame.Rect(0, 0, 0, 0)
-        self._save_btn   = pygame.Rect(0, 0, 0, 0)
-        self._input_rect = pygame.Rect(0, 0, 0, 0)
 
+    def show(self, sim_state):
+        self.open            = True
+        self._was_paused     = sim_state["paused"]
+        sim_state["paused"]  = True
 
+    def hide(self, sim_state):
+        self.open            = False
+        sim_state["paused"]  = self._was_paused
 
-    # ── Ouverture / fermeture ─────────────────────────────────────────────────
-
-    def show(self, sim_state: dict) -> None:
-        self.open        = True
-        self.saves       = _scan()
-        self.scroll      = 0
-        self._was_paused = sim_state["paused"]
-        sim_state["paused"] = True
-
-    def hide(self, sim_state: dict) -> None:
-        self.open = False
-        sim_state["paused"] = self._was_paused
-
-    def toggle(self, sim_state: dict) -> None:
+    def toggle(self, sim_state):
         if self.open:
             self.hide(sim_state)
         else:
             self.show(sim_state)
 
-    # ── Rendu ─────────────────────────────────────────────────────────────────
+    def _draw_header(self, screen, px, py, w, title, font_med):
+        pygame.draw.rect(screen, HEADER_BG, (px, py, w, 36))
+        pygame.draw.line(screen, BORDER, (px, py + 36), (px + w, py + 36), 1)
+        t = font_med.render(title, True, TEXT)
+        screen.blit(t, (px + PAD, py + 18 - t.get_height() // 2))
+        self._close_rect = pygame.Rect(px + w - CLOSE_W - 6, py + 6, CLOSE_W, CLOSE_W)
+        _draw_close_button(screen, self._close_rect, pygame.mouse.get_pos())
 
-    def draw(self, screen: pygame.Surface, font_sm: pygame.font.Font, font_med: pygame.font.Font) -> None:
+
+# ── SAVE ──────────────────────────────────────────────────────────────────────
+
+class SavePanel(_BasePanel):
+    def __init__(self):
+        super().__init__()
+        self.name          = "quicksave"
+        self._input_rect   = pygame.Rect(0, 0, 0, 0)
+        self._save_btn     = pygame.Rect(0, 0, 0, 0)
+        self.scenario_name = ""
+
+    def draw(self, screen, font_sm, font_med):
         if not self.open:
             return
-
         sw, sh = screen.get_size()
-        px     = sw // 2 - W // 2
-        py     = sh // 2 - H // 2
+        px = sw // 2 - W_SAVE // 2
+        py = sh // 2 - H_SAVE // 2
 
-        # fond principal
-        panel = pygame.Surface((W, H), pygame.SRCALPHA)
-        panel.fill(BG)
-        pygame.draw.rect(panel, BORDER, (0, 0, W, H), 1)
-        screen.blit(panel, (px, py))
+        pygame.draw.rect(screen, PANEL_BG, (px, py, W_SAVE, H_SAVE))
+        pygame.draw.rect(screen, BORDER,   (px, py, W_SAVE, H_SAVE), 1)
 
-        # ── header ───────────────────────────────────────────────────────────
-        pygame.draw.rect(screen, HEADER_BG, (px, py, W, 36))
-        pygame.draw.line(screen, BORDER, (px, py + 36), (px + W, py + 36), 1)
-
-        t = font_med.render("SAUVEGARDES", True, TEXT_BRIGHT)
-        screen.blit(t, (px + PAD, py + 36 // 2 - t.get_height() // 2))
-
-        # bouton fermer
-        self._close_rect = pygame.Rect(px + W - 30, py + 4, 26, 26)
-        pygame.draw.rect(screen, (35, 18, 18), self._close_rect)
-        pygame.draw.rect(screen, CLOSE_COL, self._close_rect, 1)
-        x = font_med.render("✕", True, CLOSE_COL)
-        screen.blit(x, (self._close_rect.centerx - x.get_width() // 2,
-                        self._close_rect.centery - x.get_height() // 2))
-
-        # ── liste des saves ───────────────────────────────────────────────────
-        list_y  = py + 36 + 4
-        visible = self.saves[self.scroll: self.scroll + MAX_VISIBLE]
-
-        self._row_rects = []
-        for i, s in enumerate(visible):
-            ry   = list_y + i * ROW_H
-            rect = pygame.Rect(px + 1, ry, W - 2, ROW_H)
-            self._row_rects.append((rect, self.scroll + i))
-
-            real_i = self.scroll + i
-            col_bg = ROW_HOVER if real_i == self.hovered else HEADER_BG if i % 2 == 0 else None
-            if col_bg:
-                pygame.draw.rect(screen, col_bg, rect)
-
-            name_surf = font_med.render(s["name"], True, TEXT_BRIGHT if real_i == self.hovered else TEXT)
-            tick_surf = font_sm.render(f"tick {s['tick']:,}", True, TEXT_DIM)
-            date_surf = font_sm.render(s["date"], True, TEXT_DIM)
-
-            screen.blit(name_surf, (px + PAD, ry + ROW_H // 2 - name_surf.get_height() // 2))
-            screen.blit(tick_surf, (px + 180, ry + ROW_H // 2 - tick_surf.get_height() // 2))
-            screen.blit(date_surf, (px + W - PAD - date_surf.get_width(),
-                                    ry + ROW_H // 2 - date_surf.get_height() // 2))
-
-            pygame.draw.line(screen, BORDER,
-                             (px, ry + ROW_H - 1), (px + W, ry + ROW_H - 1), 1)
-
-        # placeholder si vide
-        if not self.saves:
-            msg = font_sm.render("Aucune sauvegarde", True, TEXT_DIM)
-            screen.blit(msg, (px + W // 2 - msg.get_width() // 2,
-                              list_y + MAX_VISIBLE * ROW_H // 2))
-
-        # scrollbar
-        total = len(self.saves)
-        if total > MAX_VISIBLE:
-            track_h  = MAX_VISIBLE * ROW_H
-            thumb_h  = max(20, int(track_h * MAX_VISIBLE / total))
-            thumb_y  = list_y + int(track_h * self.scroll / total)
-            pygame.draw.rect(screen, BORDER, (px + W - 5, list_y, 4, track_h))
-            pygame.draw.rect(screen, ACCENT_DIM, (px + W - 5, thumb_y, 4, thumb_h))
-
-        # séparateur
-        sep_y = list_y + MAX_VISIBLE * ROW_H + 6
-        pygame.draw.line(screen, BORDER, (px, sep_y), (px + W, sep_y), 1)
-
-        # ── zone de saisie + bouton save ──────────────────────────────────────
-        input_y = sep_y + 8
-        btn_w   = 90
-        input_w = W - btn_w - PAD * 3
+        self._draw_header(screen, px, py, W_SAVE, f"Sauvegarder  ,  {self.scenario_name}", font_med)
 
         # champ texte
-        self._input_rect = pygame.Rect(px + PAD, input_y, input_w, 28)
+        input_y = py + 56
+        self._input_rect = pygame.Rect(px + PAD, input_y, W_SAVE - 120 - PAD * 2, 32)
         pygame.draw.rect(screen, INPUT_BG, self._input_rect)
         pygame.draw.rect(screen, INPUT_BD, self._input_rect, 1)
-
-        # texte + curseur clignotant
-        txt  = font_med.render(self.name, True, TEXT_BRIGHT)
-        screen.blit(txt, (self._input_rect.x + 6, input_y + 28 // 2 - txt.get_height() // 2))
+        txt = font_med.render(self.name, True, TEXT)
+        screen.blit(txt, (self._input_rect.x + 8, input_y + 16 - txt.get_height() // 2))
         if pygame.time.get_ticks() % 1000 < 550:
-            cx = self._input_rect.x + 6 + txt.get_width() + 1
-            cy = input_y + 4
-            pygame.draw.line(screen, TEXT, (cx, cy), (cx, cy + 20), 1)
+            cx = self._input_rect.x + 8 + txt.get_width() + 1
+            pygame.draw.line(screen, TEXT, (cx, input_y + 5), (cx, input_y + 27), 1)
 
         # bouton SAUVER
-        self._save_btn = pygame.Rect(px + PAD * 2 + input_w, input_y, btn_w, 28)
+        self._save_btn = pygame.Rect(px + W_SAVE - 110 - PAD, input_y, 110, 32)
         mx, my = pygame.mouse.get_pos()
-        btn_col = BTN_HOVER if self._save_btn.collidepoint(mx, my) else BTN_BG
-        pygame.draw.rect(screen, btn_col, self._save_btn)
-        pygame.draw.rect(screen, ACCENT, self._save_btn, 1)
-        lbl = font_med.render("SAUVER", True, TEXT_BRIGHT)
+        bc = BTN_SAVE_HV if self._save_btn.collidepoint(mx, my) else BTN_SAVE
+        pygame.draw.rect(screen, bc, self._save_btn)
+        pygame.draw.rect(screen, BORDER, self._save_btn, 1)
+        lbl = font_med.render("Sauvegarder", True, TEXT)
         screen.blit(lbl, (self._save_btn.centerx - lbl.get_width() // 2,
                           self._save_btn.centery - lbl.get_height() // 2))
 
-    # ── Gestion événements ────────────────────────────────────────────────────
-
-    def handle_event(
-        self,
-        event: pygame.event.Event,
-        sim_state: dict,
-        world, scheduler, coverage,
-    ) -> bool:
-        """
-        Traite un événement. Retourne True si l'événement est consommé
-        (empêche le renderer de le traiter aussi).
-        """
+    def handle_event(self, event, sim_state, world, scheduler, coverage):
         if not self.open:
             return False
-
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_ESCAPE:
-                self.hide(sim_state)
-                return True
+                self.hide(sim_state); return True
             if event.key == pygame.K_RETURN:
-                self._do_save(world, scheduler, coverage)
-                return True
+                self._do_save(world, scheduler, coverage); return True
             if event.key == pygame.K_BACKSPACE:
-                self.name = self.name[:-1]
-                return True
+                self.name = self.name[:-1]; return True
             if event.unicode and event.unicode.isprintable() and len(self.name) < 40:
-                self.name += event.unicode
-                return True
-            return True   # absorbe toutes les touches quand le panel est ouvert
-
+                self.name += event.unicode; return True
+            return True
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             mx, my = event.pos
             if self._close_rect.collidepoint(mx, my):
-                self.hide(sim_state)
-                return True
+                self.hide(sim_state); return True
             if self._save_btn.collidepoint(mx, my):
-                self._do_save(world, scheduler, coverage)
-                return True
-            if self._input_rect.collidepoint(mx, my):
-                return True
+                self._do_save(world, scheduler, coverage); return True
+            return True
+        return False
+
+    def _do_save(self, world, scheduler, coverage):
+        if not self.name.strip():
+            return
+        path = saves_dir(self.scenario_name) / f"{self.name.strip()}.json"
+        save(world, scheduler, coverage, path)
+
+
+# ── LOAD ──────────────────────────────────────────────────────────────────────
+
+class LoadPanel(_BasePanel):
+    def __init__(self):
+        super().__init__()
+        self.saves         = []
+        self.scroll        = 0
+        self.hovered       = -1
+        self.scenario_name = ""
+        self._row_rects    = []
+
+    def show(self, sim_state):
+        super().show(sim_state)
+        self.saves  = scan_saves(self.scenario_name)
+        self.scroll = 0
+
+    def draw(self, screen, font_sm, font_med):
+        if not self.open:
+            return
+        sw, sh = screen.get_size()
+        px = sw // 2 - W_LOAD // 2
+        py = sh // 2 - H_LOAD // 2
+
+        pygame.draw.rect(screen, PANEL_BG, (px, py, W_LOAD, H_LOAD))
+        pygame.draw.rect(screen, BORDER,   (px, py, W_LOAD, H_LOAD), 1)
+
+        self._draw_header(screen, px, py, W_LOAD, f"Charger  ,  {self.scenario_name}", font_med)
+
+        list_y  = py + 44
+        visible = self.saves[self.scroll: self.scroll + MAX_VISIBLE]
+        self._row_rects = []
+
+        if not self.saves:
+            msg = font_med.render("Aucune sauvegarde pour ce scénario.", True, TEXT_DIM)
+            screen.blit(msg, (px + PAD, list_y + 40))
+        else:
+            for i, s in enumerate(visible):
+                ry   = list_y + i * ROW_H
+                rect = pygame.Rect(px + 1, ry, W_LOAD - 2, ROW_H)
+                self._row_rects.append((rect, self.scroll + i))
+                real_i = self.scroll + i
+                if real_i == self.hovered:
+                    pygame.draw.rect(screen, ROW_HOVER, rect)
+                name_s = font_med.render(s["name"], True, TEXT)
+                tick_s = font_sm.render(f"tick {s['tick']:,}", True, TEXT_DIM)
+                date_s = font_sm.render(s["date"], True, TEXT_DIM)
+                screen.blit(name_s, (px + PAD, ry + ROW_H // 2 - name_s.get_height() // 2))
+                screen.blit(tick_s, (px + 230, ry + ROW_H // 2 - tick_s.get_height() // 2))
+                screen.blit(date_s, (px + W_LOAD - PAD - date_s.get_width(),
+                                     ry + ROW_H // 2 - date_s.get_height() // 2))
+                pygame.draw.line(screen, (60, 65, 75), (px, ry + ROW_H - 1), (px + W_LOAD, ry + ROW_H - 1), 1)
+
+            total = len(self.saves)
+            if total > MAX_VISIBLE:
+                track_h = MAX_VISIBLE * ROW_H
+                thumb_h = max(20, int(track_h * MAX_VISIBLE / total))
+                thumb_y = list_y + int(track_h * self.scroll / total)
+                pygame.draw.rect(screen, (60, 65, 75), (px + W_LOAD - 5, list_y, 4, track_h))
+                pygame.draw.rect(screen, BORDER,       (px + W_LOAD - 5, thumb_y, 4, thumb_h))
+
+        hint = font_sm.render("Cliquez sur une sauvegarde pour charger.", True, TEXT_DIM)
+        screen.blit(hint, (px + PAD, py + H_LOAD - hint.get_height() - 10))
+
+    def handle_event(self, event, sim_state, world, scheduler, coverage):
+        if not self.open:
+            return False
+        if event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_ESCAPE:
+                self.hide(sim_state); return True
+            return True
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            mx, my = event.pos
+            if self._close_rect.collidepoint(mx, my):
+                self.hide(sim_state); return True
             for rect, idx in self._row_rects:
                 if rect.collidepoint(mx, my) and idx < len(self.saves):
-                    self._do_load(self.saves[idx]["path"], world, scheduler, coverage)
-                    return True
-            return True   # clic dans le panel mais hors éléments = absorbe quand même
-
+                    load_state(world, scheduler, coverage, self.saves[idx]["path"])
+                    self.hide(sim_state); return True
+            return True
         if event.type == pygame.MOUSEMOTION:
             self.hovered = -1
             for rect, idx in self._row_rects:
                 if rect.collidepoint(event.pos):
                     self.hovered = idx
                     break
-
         if event.type == pygame.MOUSEWHEEL:
             mx, my = pygame.mouse.get_pos()
             sw, sh = pygame.display.get_surface().get_size()
-            px     = sw // 2 - W // 2
-            py     = sh // 2 - H // 2
-            if pygame.Rect(px, py, W, H).collidepoint(mx, my):
-                self.scroll = max(0, min(len(self.saves) - MAX_VISIBLE,
-                                         self.scroll - event.y))
+            px, py = sw // 2 - W_LOAD // 2, sh // 2 - H_LOAD // 2
+            if pygame.Rect(px, py, W_LOAD, H_LOAD).collidepoint(mx, my):
+                self.scroll = max(0, min(len(self.saves) - MAX_VISIBLE, self.scroll - event.y))
                 return True
-
         return False
-
-    # ── Actions ───────────────────────────────────────────────────────────────
-
-    def _do_save(self, world, scheduler, coverage) -> None:
-        if not self.name.strip():
-            return
-        from core.save_load import save
-        path = SAVES_DIR / f"{self.name.strip()}.json"
-        save(world, scheduler, coverage, path)
-        self.saves = _scan()
-
-    def _do_load(self, path: Path, world, scheduler, coverage) -> None:
-        from core.save_load import load_state
-        load_state(world, scheduler, coverage, path)
-        self.saves = _scan()

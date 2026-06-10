@@ -1,6 +1,8 @@
 # main.py
+import json
 import threading
 import time
+from core.scenario_loader import load
 from core.scheduler import Scheduler
 from core.save_load import load_state
 from visualization.mission_select import run_select
@@ -14,7 +16,10 @@ if result is None:
 world     = result["world"]
 zone      = result["zone"]
 coverage  = result["coverage"]
-save_path = str(result["scenario_path"]).replace("scenarios", "saves")
+
+# Nom du scénario — utilisé pour les dossiers de saves
+with open(result["scenario_path"]) as f:
+    scenario_name = json.load(f).get("name", result["scenario_path"].stem)
 
 scheduler = Scheduler(zone=zone, coverage_map=coverage)
 
@@ -35,4 +40,6 @@ def sim_loop():
         time.sleep(dt / max(0.1, sim_state["speed"]))
 
 threading.Thread(target=sim_loop, daemon=True).start()
-run(world, zone, coverage, sim_state=sim_state, scheduler=scheduler, save_path=save_path)
+run(world, zone, coverage, sim_state=sim_state,
+    scheduler=scheduler, scenario_name=scenario_name,
+    background_file=result.get("background"))

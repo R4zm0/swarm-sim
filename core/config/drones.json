@@ -53,7 +53,7 @@
     "parent":       "_base",
     "type":         "isr",
     "display_name": "Mavic ISR",
-
+    "sprite" : "mavic_isr.png",
     "speed":            120.0,
     "sensor_radius":    1200.0,
     "comm_radius":      200.0,
@@ -67,23 +67,24 @@
     "power_idle":  0.001,   
     "power_max_steer": 0.005
   },
-
-  "lancet": {
+    "shahed": {
     "parent":       "_base",
-    "type":         "loitering",
-    "display_name": "Lancet-3",
-
-    "speed":            18.0,
-    "sensor_radius":    800.0,
-    "comm_radius":      120.0,
-    "max_force":        8.0,
-    "mass":             5.0,
+    "type":         "shahed",
+    "display_name": "shahed 131",
+    "sprite" : "shahed.png",
+    "speed":            1200.0,
+    "sensor_radius":    1200.0,
+    "comm_radius":      200.0,
+    "max_force":        1000.0,
+    "mass":             3,
 
     "battery_model":     "combustion",
-    "battery_knee":      0.0,
-    "battery_steepness": 1.0,
+    "battery_knee":      0.25,
+    "battery_steepness": 11.0,
 
-    "power_idle":  0.03,  
-    "power_max_steer": 0.008
+    "power_idle":  0.0001,   
+    "power_max_steer": 0.01
   }
+
+
 }

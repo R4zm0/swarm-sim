@@ -1,28 +1,12 @@
 # core/save_load.py
-
-
-
-
 """
 Save / Load — sérialisation de l'état de mission en cours.
 
-Design :
-    Config immuable (speed, mass, sensor_radius...) NON sauvegardée.
-    Elle est rechargée depuis le scénario JSON au load.
+Structure des saves :
+    data/saves/{scenario_name}/{nom}.json
 
-    Seul l'état de mission est persisté :
-        - Composants mutables (battery_level, mode, jamming_level...)
-        - Positions, velocities, targets
-        - alive_mask
-        - Tick courant
-        - Coverage map (valeurs de couverture)
-
-Workflow :
-    save(world, scheduler, coverage, path)
-        → data/saves/nom.json
-
-    load_state(world, scheduler, coverage, path)
-        → restaure l'état  (world déjà initialisé depuis le scénario JSON)
+    Le scenario_name est stocké dans les meta pour vérification au load.
+    On ne peut charger que des saves du même scénario que la session courante.
 """
 
 import json
@@ -31,15 +15,20 @@ from pathlib import Path
 from datetime import datetime
 
 
+def saves_dir(scenario_name: str) -> Path:
+    """Dossier de saves pour un scénario donné."""
+    return Path("data/saves") / scenario_name
+
+
 def save(world, scheduler, coverage, path: str | Path) -> None:
-    """Sauvegarde l'état courant de la mission dans un fichier JSON."""
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
 
     state = {
         "meta": {
-            "tick":     scheduler.tick_count,
-            "saved_at": datetime.now().isoformat(),
+            "tick":          scheduler.tick_count,
+            "saved_at":      datetime.now().isoformat(),
+            "scenario_name": path.parent.name,   # dossier = nom du scénario
         },
         "world": {
             "components": world.components.state_dict(),
@@ -58,12 +47,6 @@ def save(world, scheduler, coverage, path: str | Path) -> None:
 
 
 def load_state(world, scheduler, coverage, path: str | Path) -> None:
-    """
-    Restaure un état de mission sauvegardé.
-
-    Pré-requis : le world doit déjà être initialisé depuis le scénario JSON
-    (les drones doivent exister — leurs configs immuables sont rechargées depuis JSON).
-    """
     path = Path(path)
     if not path.exists():
         print(f"[load] fichier introuvable : {path}")
@@ -73,9 +56,7 @@ def load_state(world, scheduler, coverage, path: str | Path) -> None:
         state = json.load(f)
 
     w = state["world"]
-
     scheduler.tick_count = state["meta"]["tick"]
-
     world.components.load_state(w["components"])
     world.positions  = np.array(w["positions"],  dtype=float)
     world.velocities = np.array(w["velocities"], dtype=float)
@@ -86,3 +67,23 @@ def load_state(world, scheduler, coverage, path: str | Path) -> None:
         coverage.load_state(state["coverage"])
 
     print(f"[load] tick {scheduler.tick_count} ← {path}")
+
+
+def scan_saves(scenario_name: str) -> list[dict]:
+    """Liste les saves disponibles pour un scénario donné."""
+    d = saves_dir(scenario_name)
+    d.mkdir(parents=True, exist_ok=True)
+    saves = []
+    for p in sorted(d.glob("*.json"), key=lambda x: x.stat().st_mtime, reverse=True):
+        try:
+            with open(p) as f:
+                data = json.load(f)
+            saves.append({
+                "path":     p,
+                "name":     p.stem,
+                "tick":     data["meta"]["tick"],
+                "date":     data["meta"]["saved_at"][:16].replace("T", " "),
+            })
+        except Exception:
+            pass
+    return saves

@@ -20,14 +20,15 @@ from environment.zone import PatrolZone
 from systems.coverage import CoverageMap
 from entities.types import DroneMode
 from visualization.utils import to_raw, make_raw_surface
-from visualization.save_panel import SaveLoadPanel
+from visualization.save_panel import SavePanel, LoadPanel
 import systems.detection as detection
 
 # ── Configuration ──────────────────────────────────────────────────────────────
 
 FPS          = 60
-BG_WORLD     = (15, 15, 25)
+BG_WORLD     = (235, 238, 242)   # fond clair quand pas de carte
 BG_OUTSIDE   = ( 5,  5,  8)
+NO_MAP_TEXT  = (120, 130, 145)
 WORLD_BORDER = (40, 55, 80)
 
 DRONE_ACTIVE_COLOR    = (80, 200, 255)
@@ -57,21 +58,21 @@ MINIMAP_BG      = (10, 12, 20)
 MINIMAP_BORDER  = (50, 70, 100)
 VIEWPORT_COLOR  = (80, 200, 255)
 
-_ROOT           = Path(__file__).parent.parent
-BACKGROUND_PATH = _ROOT / "data" / "maps" / "background_1.png"
+_ROOT     = Path(__file__).parent.parent
+MAPS_DIR  = _ROOT / "data" / "maps"
 
 SPEED_LEVELS = [0.25, 0.5, 1.0, 2.0, 4.0, 8.0, 16.0]
 
 CONTROLS = [
-    "scroll     zoom",
-    "clic droit  pan",
-    "R          reset",
-    "D          debug",
-    "─────────────",
-    "space      pause",
-    "→          step",
-    "S          save",
-    "L          load",
+    "scroll  : zoom",
+    "clic dr : pan",
+    "R       : reset",
+    "D       : debug",
+    "",
+    "espace  : pause",
+    "fleche  : step",
+    "S       : save",
+    "L       : load",
 ]
 
 _BTN_W, _BTN_H = 32, 24
@@ -85,15 +86,60 @@ _BAR_W         = _BTN_W + 10 + _SLIDER_W + 40 + _BAR_PAD * 2
 
 # ── Assets ─────────────────────────────────────────────────────────────────────
 
-def load_background(raw_w: int, raw_h: int) -> pygame.Surface | None:
-    if BACKGROUND_PATH is None:
+def load_background(filename: str | None, raw_w: int, raw_h: int) -> pygame.Surface | None:
+    """
+    Charge le fond de carte du scénario depuis data/maps/<filename>.
+    Retourne None si aucun fichier (→ fond clair + message dans le renderer).
+    """
+    if not filename:
+        return None
+    path = MAPS_DIR / filename
+    if not path.exists():
+        print(f"[renderer] fond de carte introuvable : {path}")
         return None
     try:
-        img = pygame.image.load(BACKGROUND_PATH).convert()
+        img = pygame.image.load(str(path)).convert()
         return pygame.transform.scale(img, (raw_w, raw_h))
     except Exception as e:
-        print(f"[renderer] background non chargé : {e}")
+        print(f"[renderer] fond non chargé : {e}")
         return None
+
+
+SPRITES_DIR = _ROOT / "data" / "sprites"
+_sprite_cache: dict[str, pygame.Surface] = {}
+
+
+def load_drone_sprite(filename: str | None) -> pygame.Surface | None:
+    """
+    Charge un sprite custom pour un type de drone depuis data/sprites/<filename>.
+    Le sprite garde sa couleur d'origine et est teinté rouge en mode EMERGENCY
+    (multiplication par DRONE_EMERGENCY_COLOR).
+    Mise en cache par filename.
+    """
+    if not filename:
+        return None
+    if filename in _sprite_cache:
+        return _sprite_cache[filename]
+    path = SPRITES_DIR / filename
+    if not path.exists():
+        print(f"[renderer] sprite introuvable : {path}")
+        _sprite_cache[filename] = None
+        return None
+    try:
+        img = pygame.image.load(str(path)).convert_alpha()
+        _sprite_cache[filename] = img
+        return img
+    except Exception as e:
+        print(f"[renderer] sprite non chargé : {e}")
+        _sprite_cache[filename] = None
+        return None
+
+
+def tint_sprite(sprite: pygame.Surface, color: tuple) -> pygame.Surface:
+    """Multiplie le sprite par une couleur (pour le rouge EMERGENCY)."""
+    tinted = sprite.copy()
+    tinted.fill(color + (0,), special_flags=pygame.BLEND_RGBA_MULT)
+    return tinted
 
 
 # ── Raw surface ────────────────────────────────────────────────────────────────
@@ -202,22 +248,90 @@ def draw_world_raw(
     _draw_sensor_circles(surface, raw_w, raw_h, world)
 
 
+def draw_no_map_notice(surface, font) -> None:
+    """Affiché en haut-centre quand le scénario n'a pas de fond de carte."""
+    msg = font.render("Pas de fond de carte pour ce scénario", True, NO_MAP_TEXT)
+    sw  = surface.get_size()[0]
+    bg  = pygame.Surface((msg.get_width() + 20, msg.get_height() + 10), pygame.SRCALPHA)
+    bg.fill((255, 255, 255, 160))
+    x = sw // 2 - bg.get_width() // 2
+    surface.blit(bg, (x, 8))
+    surface.blit(msg, (x + 10, 13))
+
+
 # ── Screen overlay ─────────────────────────────────────────────────────────────
 
 def _world_to_screen(wx, wy, cam_x, cam_y, zoom, sw, sh):
     return (int((wx - cam_x) * zoom + sw / 2), int((wy - cam_y) * zoom + sh / 2))
 
 
-def draw_screen_overlay(surface, world, cam_x, cam_y, zoom, font, debug=False) -> None:
+def _draw_battery_bar(surface, cx, top_y, level: float, width: int) -> None:
+    """Petite barre de batterie horizontale, fond noir, fill coloré selon le niveau."""
+    h = 4
+    x = cx - width // 2
+    pygame.draw.rect(surface, (0, 0, 0), (x, top_y, width, h))
+    fill = int(width * max(0.0, min(1.0, level)))
+    col  = (90, 210, 90) if level > 0.5 else (230, 190, 30) if level > 0.25 else (230, 70, 70)
+    if fill > 0:
+        pygame.draw.rect(surface, col, (x, top_y, fill, h))
+    pygame.draw.rect(surface, (255, 255, 255), (x, top_y, width, h), 1)
+
+
+def draw_screen_overlay(
+    surface, world, cam_x, cam_y, zoom, font, font_bat,
+    sprites: dict | None = None, debug: bool = False,
+) -> None:
+    """
+    sprites : dict {drone_type: pygame.Surface} — sprite custom par type.
+              Si pas de sprite pour un type, on dessine un rond.
+              Couleur de base normale ; teinté rouge en mode EMERGENCY.
+    """
     sw, sh = surface.get_size()
     r = max(2, int(DRONE_RADIUS * zoom ** DRONE_SCALE_EXP))
+    sprites = sprites or {}
+
     for drone in world.drones.values():
-        x, y = _world_to_screen(drone.position[0], drone.position[1], cam_x, cam_y, zoom, sw, sh)
-        col  = DRONE_EMERGENCY_COLOR if drone.mode is DroneMode.EMERGENCY else DRONE_ACTIVE_COLOR
-        pygame.draw.circle(surface, col, (x, y), r)
+        x, y      = _world_to_screen(drone.position[0], drone.position[1], cam_x, cam_y, zoom, sw, sh)
+        emergency = drone.mode is DroneMode.EMERGENCY
+
+        sprite = sprites.get(drone.type)
+        if sprite is not None:
+            sz     = max(12, int(r * 2.4))   # plus gros qu'avant (était 1.6)
+            scaled = pygame.transform.smoothscale(sprite, (sz, sz))
+
+            # Teinte rouge en EMERGENCY sans casser la transparence
+            if emergency:
+                scaled = scaled.copy()
+                # BLEND_RGB_MULT n'affecte pas l'alpha → contour conservé
+                scaled.fill((*DRONE_EMERGENCY_COLOR, 255), special_flags=pygame.BLEND_RGB_MULT)
+
+            # Rotation selon la vitesse réelle. Sprite source orienté vers le haut.
+            vx, vy = float(drone.velocity[0]), float(drone.velocity[1])
+            if vx * vx + vy * vy > 1e-3:
+                import math
+                # atan2(-x, -y) : 0° quand le drone monte (vy < 0) → sprite vers le haut OK
+                angle = math.degrees(math.atan2(-vx, -vy))
+                rotated = pygame.transform.rotate(scaled, angle)
+                rect    = rotated.get_rect(center=(x, y))
+                surface.blit(rotated, rect.topleft)
+                top_y = rect.top - 8
+            else:
+                surface.blit(scaled, (x - sz // 2, y - sz // 2))
+                top_y = y - sz // 2 - 8
+        else:
+            col = DRONE_EMERGENCY_COLOR if emergency else DRONE_ACTIVE_COLOR
+            pygame.draw.circle(surface, col, (x, y), r)
+            top_y = y - r - 8
+
+        # barre de batterie au-dessus du drone, lisible
+        _draw_battery_bar(surface, x, top_y, drone.battery_level, max(28, r * 2))
+
         if debug:
-            lbl = font.render(f"{drone.battery_level:.2f}", True, (180, 180, 180))
-            surface.blit(lbl, (x + r + 3, y - lbl.get_height() // 2))
+            lbl = font_bat.render(f"{int(drone.battery_level * 100)}%", True, (255, 255, 255))
+            lbl_bg = pygame.Surface((lbl.get_width() + 4, lbl.get_height() + 2))
+            lbl_bg.fill((0, 0, 0))
+            surface.blit(lbl_bg, (x + r + 3, y - lbl.get_height() // 2 - 1))
+            surface.blit(lbl,    (x + r + 5, y - lbl.get_height() // 2))
 
 
 def draw_minimap_overlay(surface, world, mm_w, mm_h) -> None:
@@ -230,48 +344,60 @@ def draw_minimap_overlay(surface, world, mm_w, mm_h) -> None:
 # ── HUD ───────────────────────────────────────────────────────────────────────
 
 def draw_controls(surface, font, debug) -> None:
-    pad = 6
+    pad = 8
     lh  = font.get_height() + 2
     w, h = 150, len(CONTROLS) * lh + pad * 2
-    s = pygame.Surface((w, h), pygame.SRCALPHA)
-    s.fill((0, 0, 0, 180))
-    surface.blit(s, (pad, surface.get_height() - h - pad))
+    box_x, box_y = pad, surface.get_height() - h - pad
+
+    # fond noir opaque, bordure blanche
+    pygame.draw.rect(surface, (0, 0, 0), (box_x, box_y, w, h))
+    pygame.draw.rect(surface, (255, 255, 255), (box_x, box_y, w, h), 1)
+
     for i, line in enumerate(CONTROLS):
-        col = (180, 220, 100) if (line.startswith("D") and debug) \
-            else (40, 45, 55) if line.startswith("─") \
-            else (120, 130, 150)
-        surface.blit(font.render(line, True, col), (pad * 2, surface.get_height() - h - pad + pad + i * lh))
+        if not line.strip():
+            continue
+        col = (180, 230, 120) if (line.startswith("D") and debug) else (235, 235, 235)
+        surface.blit(font.render(line, True, col), (box_x + pad, box_y + pad + i * lh))
 
 
 def draw_coverage_hud(surface, font_sm, coverage, debug) -> None:
     m      = coverage.metrics()
     sw, sh = surface.get_size()
     pad    = 10
-    bar_w, bar_h = 160, 10
+    bar_w, bar_h = 180, 14
     bar_x  = sw - bar_w - pad
     bar_y  = sh - bar_h - pad
 
-    pygame.draw.rect(surface, (30, 30, 40), (bar_x, bar_y, bar_w, bar_h))
+    # barre
+    pygame.draw.rect(surface, (0, 0, 0), (bar_x, bar_y, bar_w, bar_h))
     fill = int(bar_w * m["coverage_ratio"])
-    col  = (80, 200, 80) if m["coverage_ratio"] > 0.75 else (220, 180, 0) if m["coverage_ratio"] > 0.40 else (220, 60, 60)
+    col  = (90, 210, 90) if m["coverage_ratio"] > 0.75 else (230, 190, 30) if m["coverage_ratio"] > 0.40 else (230, 70, 70)
     if fill > 0:
         pygame.draw.rect(surface, col, (bar_x, bar_y, fill, bar_h))
-    pygame.draw.rect(surface, (60, 70, 90), (bar_x, bar_y, bar_w, bar_h), 1)
-    lbl = font_sm.render(f"coverage {m['coverage_ratio']*100:.0f}%", True, (160, 170, 180))
-    surface.blit(lbl, (bar_x, bar_y - lbl.get_height() - 2))
+    pygame.draw.rect(surface, (255, 255, 255), (bar_x, bar_y, bar_w, bar_h), 1)
+
+    lbl = font_sm.render(f"Couverture, {m['coverage_ratio']*100:.0f}%", True, (255, 255, 255))
+    lbl_bg = pygame.Surface((lbl.get_width() + 8, lbl.get_height() + 4))
+    lbl_bg.fill((0, 0, 0))
+    surface.blit(lbl_bg, (bar_x, bar_y - lbl.get_height() - 6))
+    surface.blit(lbl,    (bar_x + 4, bar_y - lbl.get_height() - 4))
 
     if not debug:
         return
-    lines = [f"ratio    {m['coverage_ratio']*100:.1f}%", f"quality  {m['mean_value']*100:.1f}%",
-             f"max gap  {m['max_gap']*100:.1f}%", f"decay    {coverage.decay:.4f}"]
+    lines = [
+        f"ratio   , {m['coverage_ratio']*100:.1f}%",
+        f"quality , {m['mean_value']*100:.1f}%",
+        f"max gap , {m['max_gap']*100:.1f}%",
+        f"decay   , {coverage.decay:.4f}",
+    ]
     lh = font_sm.get_height() + 2
     ph = len(lines) * lh + pad
-    py = bar_y - bar_h - ph - 4
-    bg = pygame.Surface((bar_w, ph), pygame.SRCALPHA)
-    bg.fill((0, 0, 0, 160))
-    surface.blit(bg, (bar_x, py))
+    py = bar_y - bar_h - ph - 28
+    pygame.draw.rect(surface, (0, 0, 0), (bar_x, py, bar_w, ph))
+    pygame.draw.rect(surface, (255, 255, 255), (bar_x, py, bar_w, ph), 1)
     for i, line in enumerate(lines):
-        surface.blit(font_sm.render(line, True, (160, 180, 160)), (bar_x + 6, py + pad // 2 + i * lh))
+        surface.blit(font_sm.render(line, True, (235, 235, 235)),
+                     (bar_x + 6, py + pad // 2 + i * lh))
 
 
 def draw_debug_badge(surface, font) -> None:
@@ -311,10 +437,8 @@ def draw_playback_bar(surface, font_sm, font_med, sim_state) -> dict:
     bar_x = sw // 2 - _BAR_W // 2
     bar_y = sh - _BAR_H - 6
 
-    bg = pygame.Surface((_BAR_W, _BAR_H), pygame.SRCALPHA)
-    bg.fill((8, 10, 16, 200))
-    pygame.draw.rect(bg, (35, 42, 55), (0, 0, _BAR_W, _BAR_H), 1)
-    surface.blit(bg, (bar_x, bar_y))
+    pygame.draw.rect(surface, (0, 0, 0), (bar_x, bar_y, _BAR_W, _BAR_H))
+    pygame.draw.rect(surface, (255, 255, 255), (bar_x, bar_y, _BAR_W, _BAR_H), 1)
 
     # bouton
     btn_x    = bar_x + _BAR_PAD
@@ -345,7 +469,7 @@ def draw_playback_bar(surface, font_sm, font_med, sim_state) -> dict:
     hx = sl_x + fill_w
     pygame.draw.circle(surface, (130, 155, 185), (hx, sl_cy), _HANDLE_R)
     pygame.draw.circle(surface, (80, 105, 140),  (hx, sl_cy), _HANDLE_R, 1)
-    lbl = font_sm.render(f"{speed:.2g}x", True, (110, 125, 145))
+    lbl = font_sm.render(f"{speed:.2g}x", True, (235, 235, 235))
     surface.blit(lbl, (sl_x + _SLIDER_W + 8, sl_cy - lbl.get_height() // 2))
 
     return {"btn": btn_rect, "slider": sl_rect}
@@ -378,25 +502,34 @@ def project_to_screen(screen, raw_surf, raw_w, raw_h, cam_x, cam_y, zoom, world)
 # ── Boucle principale ─────────────────────────────────────────────────────────
 
 def run(
-    world:      World,
-    zone:       PatrolZone  | None = None,
-    coverage:   CoverageMap | None = None,
-    sim_state:  dict        | None = None,
-    scheduler                      = None,
-    save_path:  str                = "data/saves/quicksave.json",
-    width:      int                = 800,
-    height:     int                = 600,
+    world:           World,
+    zone:            PatrolZone  | None = None,
+    coverage:        CoverageMap | None = None,
+    sim_state:       dict        | None = None,
+    scheduler                           = None,
+    scenario_name:   str                = "default",
+    background_file: str         | None = None,
+    width:           int                = 800,
+    height:          int                = 600,
 ) -> None:
     pygame.init()
     screen = pygame.display.set_mode((width, height), pygame.RESIZABLE)
     pygame.display.set_caption("swarm-sim")
     clock  = pygame.time.Clock()
 
-    font_sm  = pygame.font.SysFont("Courier New", 11)
-    font_med = pygame.font.SysFont("Courier New", 13)
+    font_sm  = pygame.font.SysFont("Segoe UI,Helvetica,DejaVu Sans,Arial", 12)
+    font_med = pygame.font.SysFont("Segoe UI,Helvetica,DejaVu Sans,Arial", 14)
+    font_bat = pygame.font.SysFont("Segoe UI,Helvetica,DejaVu Sans,Arial", 11, bold=True)
 
     raw_surf, RAW_W, RAW_H = make_raw_surface(world.W, world.H)
-    background = load_background(RAW_W, RAW_H)
+    background = load_background(background_file, RAW_W, RAW_H)
+
+    # Sprites custom par type de drone, défini dans drone_configs JSON via champ "sprite"
+    sprites: dict[str, pygame.Surface] = {}
+    for cfg in world.drone_configs.values():
+        spr = load_drone_sprite(getattr(cfg, "sprite", None))
+        if spr is not None:
+            sprites[cfg.type] = spr
     mm_surf    = pygame.Surface((1, 1))
 
     zoom  = 1.0
@@ -432,7 +565,10 @@ def run(
         cam_x, cam_y = world.W / 2, world.H / 2
         zoom = min(sw / world.W, sh / world.H)
 
-    panel = SaveLoadPanel()
+    save_panel = SavePanel()
+    load_panel = LoadPanel()
+    save_panel.scenario_name = scenario_name
+    load_panel.scenario_name = scenario_name
 
     def slider_x_to_speed(mx):
         sl = bar_rects.get("slider")
@@ -448,8 +584,8 @@ def run(
         pygame.K_d:      lambda: state.update(debug=not state["debug"]),
         pygame.K_SPACE:  lambda: _sim.update(paused=not _sim["paused"]),
         pygame.K_RIGHT:  lambda: _sim.update(step=True),
-        pygame.K_s:      lambda: panel.toggle(_sim),
-        pygame.K_l:      lambda: panel.toggle(_sim),
+        pygame.K_s:      lambda: save_panel.toggle(_sim),
+        pygame.K_l:      lambda: load_panel.toggle(_sim),
     }
 
     def on_quit(e):        state["running"] = False
@@ -529,7 +665,9 @@ def run(
         mm_rect = minimap_rect(sw, sh, mm_w, mm_h)
 
         for event in pygame.event.get():
-            if panel.handle_event(event, _sim, world, scheduler, coverage):
+            if save_panel.handle_event(event, _sim, world, scheduler, coverage):
+                continue
+            if load_panel.handle_event(event, _sim, world, scheduler, coverage):
                 continue
             h = EVENT_HANDLERS.get(event.type)
             if h: h(event)
@@ -541,7 +679,7 @@ def run(
 
         project_to_screen(screen, raw_surf, RAW_W, RAW_H, cam_x, cam_y, zoom, world)
 
-        draw_screen_overlay(screen, world, cam_x, cam_y, zoom, font_med, debug)
+        draw_screen_overlay(screen, world, cam_x, cam_y, zoom, font_med, font_bat, sprites, debug)
 
         mm_surf.fill(MINIMAP_BG)
         pygame.transform.scale(raw_surf, (mm_w, mm_h), mm_surf)
@@ -551,6 +689,9 @@ def run(
         vp_x = int(cam_x / world.W * mm_w - vp_w / 2)
         vp_y = int(cam_y / world.H * mm_h - vp_h / 2)
         pygame.draw.rect(mm_surf, VIEWPORT_COLOR, (vp_x, vp_y, vp_w, vp_h), 1)
+
+        if background is None:
+            draw_no_map_notice(screen, font_med)
 
         draw_controls(screen, font_med, debug)
         bar_rects = draw_playback_bar(screen, font_sm, font_med, _sim)
@@ -562,7 +703,8 @@ def run(
         screen.blit(mm_surf, mm_rect.topleft)
         pygame.draw.rect(screen, MINIMAP_BORDER, mm_rect, 1)
 
-        panel.draw(screen, font_sm, font_med)
+        save_panel.draw(screen, font_sm, font_med)
+        load_panel.draw(screen, font_sm, font_med)
 
         pygame.display.flip()
         clock.tick(FPS)
