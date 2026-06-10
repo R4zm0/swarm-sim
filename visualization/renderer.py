@@ -405,6 +405,31 @@ def draw_debug_badge(surface, font) -> None:
     surface.blit(lbl, (10, 10))
 
 
+def draw_mouse_coords(surface, font_sm, cam_x, cam_y, zoom, world) -> None:
+    """
+    Coords monde du curseur, en bas à gauche au-dessus de la box des contrôles.
+    Style matplotlib : x=..., y=...
+    Hors fenêtre monde : n'affiche rien.
+    """
+    sw, sh = surface.get_size()
+    mx, my = pygame.mouse.get_pos()
+    wx = (mx - sw / 2) / zoom + cam_x
+    wy = (my - sh / 2) / zoom + cam_y
+
+    if not (0 <= wx <= world.W and 0 <= wy <= world.H):
+        return
+
+    txt = font_sm.render(f"x = {int(wx)}, y = {int(wy)}", True, (235, 235, 235))
+    bg  = pygame.Surface((txt.get_width() + 10, txt.get_height() + 4))
+    bg.fill((0, 0, 0))
+    pygame.draw.rect(bg, (255, 255, 255), bg.get_rect(), 1)
+    x = 8
+    y = sh - txt.get_height() - 4 - 8 - 9 * (font_sm.get_height() + 2) - 16 - 8
+    # juste au-dessus de la box des contrôles
+    surface.blit(bg, (x, y))
+    surface.blit(txt, (x + 5, y + 2))
+
+
 # ── Playback bar ───────────────────────────────────────────────────────────────
 
 def _draw_play_icon(surface, cx, cy, size, col) -> None:
@@ -699,6 +724,7 @@ def run(
             draw_coverage_hud(screen, font_sm, coverage, debug)
         if debug:
             draw_debug_badge(screen, font_med)
+            draw_mouse_coords(screen, font_sm, cam_x, cam_y, zoom, world)
 
         screen.blit(mm_surf, mm_rect.topleft)
         pygame.draw.rect(screen, MINIMAP_BORDER, mm_rect, 1)

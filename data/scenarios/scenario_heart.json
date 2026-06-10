@@ -40,8 +40,8 @@
     { "type": "shahed", "team": 0},
     { "type": "shahed", "team": 0},
     { "type": "shahed", "team": 0},
-    { "type": "mavic_isr", "team": 0},
-    { "type": "mavic_isr", "team": 0},
+    { "type": "shahed", "team": 0},
+    { "type": "shahed", "team": 0},
     { "type": "shahed", "team": 0}
   ]
 }

@@ -1,6 +1,7 @@
 {
   "name": "patrol_rectangle",
   "description": "Zone de test \u2014 overrides vitesse/force, coverage avec decay lent",
+  "background": "background_1.png",
   "world": {
     "width": 19200,
     "height": 10800
@@ -8,26 +9,38 @@
   "zone": {
     "vertices": [
       [
-        3000,
-        2000
+        5555,
+        5555
       ],
       [
-        12000,
-        2000
+        9245,
+        4562
       ],
       [
-        12000,
-        8000
+        11000,
+        3700
       ],
       [
-        3000,
-        8000
+        13000,
+        4000
+      ],
+      [
+        11500,
+        7000
+      ],
+            [
+        7500,
+        9000
+      ],
+      [
+        4500,
+        7000
       ]
     ]
   },
   "spawn": [
-    3000,
-    2000
+    5555,
+    5555
   ],
   "coverage": {
     "n_samples": 500,
