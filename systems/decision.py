@@ -1,42 +1,63 @@
 # systems/decision.py
 """
-Patrouille — cible glissante à vitesse constante.
+Patrouille — cible glissante + redistribution à la mort d'un drone.
 
-Principe :
-    patrol_d avance en continu (vitesse * dt) le long du périmètre.
-    La target = zone.point_at(patrol_d), toujours sur le périmètre.
-    Le drone poursuit cette cible glissante sans jamais avoir à la "toucher".
+patrol_d : position cible de chaque drone sur le périmètre.
+    Avance en continu à PATROL_SPEED (commun → équidistance préservée).
 
-    → Marche pour les planeurs qui tournent mal : pas de condition d'arrivée,
-      la cible glisse devant eux, ils suivent. Pas de blocage en cercle.
-
-Vitesse de la cible :
-    PATROL_SPEED en unités/seconde, commun à tous → équidistance préservée
-    (patrol_d initiaux espacés de P/n, tous avancent pareil).
-
-    À régler selon la vitesse réelle des drones : trop rapide, la cible
-    s'échappe ; trop lent, les drones tournent en rond derrière.
+Redistribution :
+    Quand le nombre de drones vivants change (mort), on ré-espace les patrol_d
+    des survivants équidistants, en partant de leur ordre actuel sur le périmètre.
+    Fait UNE SEULE FOIS au changement, pas à chaque tick.
 """
 
 import numpy as np
 from core.world import World
 from entities.types import DroneMode
 
-Coef_Patrouille_vitesse_maxmin = 0.9 # on fait bouger les points désrés à k * V avec V vitesse du plus lent élément du groupe
+PATROL_SPEED = 900.0   # vitesse de glissement de la cible (unités/s)
+
+# Mémorise le nombre de vivants au tick précédent pour détecter une mort
+_last_alive_count = {"n": -1}
+
 
 # ── Patrouille ────────────────────────────────────────────────────────────────
 
+def _redistribute(world: World, alive_ids: np.ndarray, zone) -> None:
+    """Ré-espace les patrol_d des survivants équidistants, ordre courant conservé."""
+    P        = zone.perimeter
+    patrol_d = world.components.arr("patrol_progress")
+    n        = len(alive_ids)
+    if n == 0:
+        return
+
+    # Trie les survivants par leur position courante sur le périmètre
+    current = patrol_d[alive_ids]
+    order   = np.argsort(current)
+    base    = current[order[0]]
+
+    # Ré-assigne des positions équidistantes depuis le premier, ordre conservé
+    for rank, local_idx in enumerate(order):
+        drone_id = alive_ids[local_idx]
+        patrol_d[drone_id] = (base + rank * P / n) % P
+
+
 def _patrol(world: World, ctx, zone, dt: float) -> None:
     alive_ids = ctx.alive_ids
-    if len(alive_ids) == 0:
+    n         = len(alive_ids)
+    if n == 0:
         return
-    patrol_speed_min = Coef_Patrouille_vitesse_maxmin * float(np.min(world.components.arr("speed")[alive_ids])) #LE GROUPE EST AUSSI FORT QUE SONT PLUS FAIBLE ELEMENTS !
+
+    # Détecte une mort → redistribue une seule fois
+    if n != _last_alive_count["n"]:
+        _redistribute(world, alive_ids, zone)
+        _last_alive_count["n"] = n
 
     P        = zone.perimeter
     patrol_d = world.components.arr("patrol_progress")
 
-    # Toutes les cibles glissent à la même vitesse → équidistance conservée
-    patrol_d[alive_ids] = (patrol_d[alive_ids] + patrol_speed_min * dt) % P
+    # Glissement commun → équidistance conservée
+    patrol_d[alive_ids] = (patrol_d[alive_ids] + PATROL_SPEED * dt) % P
 
     for drone_id in alive_ids:
         world.targets[drone_id] = zone.point_at(patrol_d[drone_id] % P)
