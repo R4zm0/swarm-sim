@@ -407,7 +407,7 @@ def draw_debug_badge(surface, font) -> None:
 
 def draw_mouse_coords(surface, font_sm, cam_x, cam_y, zoom, world) -> None:
     """
-    Coords monde du curseur, en bas à gauche au-dessus de la box des contrôles.
+    Coords monde du curseur, en haut à gauche, discret et semi-transparent.
     Style matplotlib : x=..., y=...
     Hors fenêtre monde : n'affiche rien.
     """
@@ -419,13 +419,12 @@ def draw_mouse_coords(surface, font_sm, cam_x, cam_y, zoom, world) -> None:
     if not (0 <= wx <= world.W and 0 <= wy <= world.H):
         return
 
-    txt = font_sm.render(f"x = {int(wx)}, y = {int(wy)}", True, (235, 235, 235))
-    bg  = pygame.Surface((txt.get_width() + 10, txt.get_height() + 4))
-    bg.fill((0, 0, 0))
-    pygame.draw.rect(bg, (255, 255, 255), bg.get_rect(), 1)
-    x = 8
-    y = sh - txt.get_height() - 4 - 8 - 9 * (font_sm.get_height() + 2) - 16 - 8
-    # juste au-dessus de la box des contrôles
+    txt = font_sm.render(f"x = {int(wx)}, y = {int(wy)}", True, (210, 215, 225))
+    txt.set_alpha(150)
+    bg  = pygame.Surface((txt.get_width() + 10, txt.get_height() + 4), pygame.SRCALPHA)
+    bg.fill((0, 0, 0, 90))
+    # haut-gauche, sous le badge DEBUG (qui est à y=10, hauteur ~20)
+    x, y = 10, 38
     surface.blit(bg, (x, y))
     surface.blit(txt, (x + 5, y + 2))
 

@@ -75,8 +75,8 @@
     "speed":            2000.0,
     "sensor_radius":    1200.0,
     "comm_radius":      200.0,
-    "max_force":        15000.0,
-    "mass":             2,
+    "max_force":        25000.0,
+    "mass":             1,
 
     "battery_model":     "combustion",
     "battery_knee":      0.25,

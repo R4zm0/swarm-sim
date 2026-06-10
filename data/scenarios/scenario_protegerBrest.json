@@ -1,6 +1,6 @@
 {
   "name": "patrol_rectangle",
-  "description": "Zone de test \u2014 overrides vitesse/force, coverage avec decay lent",
+  "description": "Scenario de mo ou les drones protegent la rade de brest",
   "background": "background_1.png",
   "world": {
     "width": 19200,
@@ -71,32 +71,32 @@
     {
       "type": "mavic_isr",
       "team": 0,
-      "speed": 1500,
-      "max_force": 15000
+      "speed": 800,
+      "max_force": 8000
     },
     {
       "type": "mavic_isr",
       "team": 0,
-      "speed": 1500,
-      "max_force": 15000
+      "speed": 800,
+      "max_force": 8000
     },
     {
       "type": "mavic_isr",
       "team": 0,
-      "speed": 1500,
-      "max_force": 15000
+      "speed": 800,
+      "max_force": 8000
     },
         {
       "type": "mavic_isr",
       "team": 0,
-      "speed": 1500,
-      "max_force": 15000
+      "speed": 800,
+      "max_force": 8000
     },
         {
       "type": "mavic_isr",
       "team": 0,
-      "speed": 1500,
-      "max_force": 15000
+      "speed": 800,
+      "max_force": 8000
     }
   ]
 }

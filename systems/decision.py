@@ -1,66 +1,50 @@
 # systems/decision.py
 """
-Comportements de navigation — écrit dans world.targets (N, 2).
+Patrouille — cible glissante à vitesse constante.
 
-Flux :
-    decision.update(world, ctx, zone, dt)
-        → world.targets mis à jour
-        → movement.py lit world.targets au tick suivant
+Principe :
+    patrol_d avance en continu (vitesse * dt) le long du périmètre.
+    La target = zone.point_at(patrol_d), toujours sur le périmètre.
+    Le drone poursuit cette cible glissante sans jamais avoir à la "toucher".
 
-Comportements :
-    patrol           — chaque drone avance patrol_d à sa propre vitesse
-    react_to_enemy   — réaction quand un drone détecte un ennemi fixe
+    → Marche pour les planeurs qui tournent mal : pas de condition d'arrivée,
+      la cible glisse devant eux, ils suivent. Pas de blocage en cercle.
 
-patrol_d avance de speed * dt par tick — pas de projection géométrique
-pendant le trajet. Résultat déterministe, équidistance garantie par construction.
+Vitesse de la cible :
+    PATROL_SPEED en unités/seconde, commun à tous → équidistance préservée
+    (patrol_d initiaux espacés de P/n, tous avancent pareil).
+
+    À régler selon la vitesse réelle des drones : trop rapide, la cible
+    s'échappe ; trop lent, les drones tournent en rond derrière.
 """
 
 import numpy as np
 from core.world import World
 from entities.types import DroneMode
 
+Coef_Patrouille_vitesse_maxmin = 0.9 # on fait bouger les points désrés à k * V avec V vitesse du plus lent élément du groupe
 
 # ── Patrouille ────────────────────────────────────────────────────────────────
 
 def _patrol(world: World, ctx, zone, dt: float) -> None:
-    """
-    Avance patrol_progress de speed * dt par tick.
-    Target = zone.point_at(patrol_d + lookahead).
-
-    Pas de progress_from_position pendant le trajet — aucune ambiguïté
-    sur quelle arête est la plus proche.
-
-    Équidistance : garantie par les valeurs initiales i * P/n.
-    Si un drone meurt, le gap se referme naturellement au prochain tour complet.
-    """
     alive_ids = ctx.alive_ids
-    n         = len(alive_ids)
-    if n == 0:
+    if len(alive_ids) == 0:
         return
+    patrol_speed_min = Coef_Patrouille_vitesse_maxmin * float(np.min(world.components.arr("speed")[alive_ids])) #LE GROUPE EST AUSSI FORT QUE SONT PLUS FAIBLE ELEMENTS !
 
     P        = zone.perimeter
-    lookahead = min(P / n * 0.35, 800.0)
-    patrol_d  = world.components.arr("patrol_progress")
-    speeds    = world.components.arr("speed")[alive_ids]
+    patrol_d = world.components.arr("patrol_progress")
 
-    # Avance patrol_d à la vitesse propre de chaque drone
-    patrol_d[alive_ids] = (patrol_d[alive_ids] + speeds * dt) % P
+    # Toutes les cibles glissent à la même vitesse → équidistance conservée
+    patrol_d[alive_ids] = (patrol_d[alive_ids] + patrol_speed_min * dt) % P
 
-    # Target = point sur le périmètre légèrement en avance
     for drone_id in alive_ids:
-        world.targets[drone_id] = zone.point_at(
-            (patrol_d[drone_id] + lookahead) % P
-        )
+        world.targets[drone_id] = zone.point_at(patrol_d[drone_id] % P)
 
 
 # ── Réaction ennemi ───────────────────────────────────────────────────────────
 
 def react_to_enemy(world: World, ctx) -> None:
-    """
-    Contact ennemi → mode EMERGENCY (rouge dans le renderer).
-    Plus de contact → retour ACTIVE.
-    Comportement de navigation inchangé — extension future ici.
-    """
     for local_i, drone_id in enumerate(ctx.alive_ids):
         if ctx.enemy_contact[local_i]:
             world.components.set("mode", drone_id, DroneMode.EMERGENCY)
@@ -80,7 +64,6 @@ def update(world: World, ctx, zone=None, dt: float = 1/60) -> None:
     if zone is not None:
         _patrol(world, ctx, zone, dt)
     else:
-        # Fallback sans zone : séparation simple
         positions = world.positions[alive_ids]
         ally_mask = ctx.detected & ctx.friendly
         safe_dist = np.where(ally_mask & (ctx.distances > 0), ctx.distances, np.inf)
