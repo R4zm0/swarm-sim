@@ -1,6 +1,6 @@
 {
-  "name": "patrol_rectangle",
-  "description": "Scenario de mo ou les drones protegent la rade de brest",
+  "name": "Patrouille_Rade_Brest_Exemple",
+  "description": "DEMONSTRATION",
   "background": "background_1.png",
   "world": {
     "width": 19200,
