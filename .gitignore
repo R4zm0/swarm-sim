@@ -1,0 +1,18 @@
+# swarm-sim : Pas sur que le prof ai un windows comme moi, donc dans le doute pas de .venv 
+.venv/
+venv/
+env/
+
+# Caches Python
+__pycache__/
+*.pyc
+*.pyo
+
+# IDE
+.vscode/
+.idea/
+
+# Sauvegardes de mission et logs (donnees de session, pas du code)
+data/saves/
+data/logs/
+
