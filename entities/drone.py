@@ -99,7 +99,7 @@ class Drone:
 
     @property
     def effective_speed(self) -> float:
-        return self.speed * (1.0 - 0.5 * self.jamming_level) * self._battery_factor()
+        return self.speed * 1.0 * self._battery_factor()
 
     @property
     def effective_sensor_radius(self) -> float:

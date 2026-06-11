@@ -1,5 +1,5 @@
 {
-  "name": "Patrouille_Forme_Convexe_DEMO",
+  "name": "Patrouille_Forme_Concave_DEMO",
   "description": " coeur pour la forme ",
   "background": "background_2.png",
 
@@ -38,7 +38,7 @@
 
   "drones": [
     { "type": "shahed", "team": 0},
-    { "type": "shahed", "team": 0},
+    { "type": "shahed", "team": 0,"battery_level": 0.5},
     { "type": "shahed", "team": 0},
     { "type": "shahed", "team": 0},
     { "type": "shahed", "team": 0},

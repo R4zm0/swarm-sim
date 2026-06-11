@@ -71,28 +71,33 @@ class TickContext:
 
 
 class Scheduler:
+    """Orchestre un pas de simulation : pipeline fixe, chaque étape
+    consomme la sortie de la précédente (cf. rapport §3.2)."""
 
     def __init__(self, zone=None, coverage_map=None) -> None:
-        self.zone         = zone
-        self.coverage_map = coverage_map
-        self.tick_count   = 0
+        self.zone         = zone           # PatrolZone : géométrie du périmètre, arretes, permietre etc...
+        self.coverage_map = coverage_map   # CoverageMap : métrique de couverture
+        self.tick_count   = 0              # numéro du pas courant (sérialisé au save)
 
     def tick(self, world, dt: float) -> None:
-        ctx = TickContext(world)
+        ctx = TickContext(world) # donnée précalculés à chaque tick
 
-        if ctx.alive_ids.size == 0:
+        if ctx.alive_ids.size == 0:        # plus aucun drone vivant, on fait rien
             return
-
+        #1
         decision.update(world, ctx, self.zone, dt)
+        max_speeds       = world.effective_speeds()   # v_max × f(batterie) 
+        
+        #2
+        desired = movement.desired_from_targets(world.positions, world.targets, max_speeds) 
+        #renvoi les vecteurs vitesse max orientés vers leurs cibles pour chaque drone
+        ctx.raw_steering = movement.update(world, desired, dt)   # Applique la force et la renvoi
 
-        max_speeds       = world.effective_speeds()
-        desired          = movement.desired_from_targets(world.positions, world.targets, max_speeds)
-        ctx.raw_steering = movement.update(world, desired, dt)
-
-        battery.update(world, ctx.raw_steering, dt)
-
+        #3
+        battery.update(world, ctx, dt)
+        #4
         if self.coverage_map is not None:
             self.coverage_map.update(world)
-
+        #5
         world._sync_alive_mask()
         self.tick_count += 1
