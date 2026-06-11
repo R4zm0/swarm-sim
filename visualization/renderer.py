@@ -157,7 +157,7 @@ def _draw_zone(surface, raw_w, raw_h, world, zone) -> None:
 
 
 def _draw_coverage_perimeter(surface, raw_w, raw_h, world, coverage) -> None:
-    """Points du périmètre colorés rouge→vert selon la valeur de coverage."""
+    """Points du périmètre colorés rouge -> vert selon la valeur de coverage."""
     pts, values = coverage.points, coverage.values
     for i in range(len(pts)):
         v = float(values[i])
@@ -172,7 +172,7 @@ def _draw_coverage_perimeter(surface, raw_w, raw_h, world, coverage) -> None:
 
 
 def _draw_enemies(surface, raw_w, raw_h, world) -> None:
-    """Ennemis fixes — croix dans un cercle rouge."""
+    """Ennemis fixes : croix dans un cercle rouge."""
     for pos in world.enemy_positions:
         x, y = to_raw(pos[0], pos[1], world.W, world.H, raw_w, raw_h)
         r    = ENEMY_RADIUS
@@ -282,7 +282,7 @@ def draw_screen_overlay(
     sprites: dict | None = None, debug: bool = False,
 ) -> None:
     """
-    sprites : dict {drone_type: pygame.Surface} — sprite custom par type.
+    sprites : dict {drone_type: pygame.Surface} : sprite custom par type.
               Si pas de sprite pour un type, on dessine un rond.
               Couleur de base normale ; teinté rouge en mode EMERGENCY.
     """

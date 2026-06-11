@@ -3,8 +3,8 @@
 Écran de sélection de mission — affiché au lancement avant la sim.
 
 Deux colonnes :
-    Nouvelle mission  — charge un scénario JSON depuis data/scenarios/
-    Reprendre         — charge un scénario + restaure un save depuis data/saves/
+    Nouvelle mission  : charge un scénario JSON depuis data/scenarios/
+    Reprendre         : charge un scénario + restaure un save depuis data/saves/
 
 Retourne un dict :
     {
@@ -97,7 +97,7 @@ def run_select(width: int = 900, height: int = 560) -> dict | None:
 
     font_sm  = pygame.font.SysFont("Segoe UI,Helvetica,DejaVu Sans,Arial", 12)
     font_med = pygame.font.SysFont("Segoe UI,Helvetica,DejaVu Sans,Arial", 14)
-    font_lg  = pygame.font.SysFont("Segoe UI,Helvetica,DejaVu Sans,Arial", 22, bold=True)
+    font_lg  = pygame.font.SysFont("Segoe UI,Helvetica,DejaVu Sans,Arial", 22, bold=False)
 
     scenarios = _scan_scenarios()
     saves     = _scan_saves()
@@ -160,10 +160,8 @@ def run_select(width: int = 900, height: int = 560) -> dict | None:
         list_h   = sh - top_y - 80
 
         # ── titre ─────────────────────────────────────────────────────────────
-        title = font_lg.render("SWARM-SIM", True, TEXT_BRIGHT)
-        sub   = font_sm.render("Sélectionnez une mission", True, TEXT_DIM)
+        title = font_lg.render("MISSIONS", True, TEXT_BRIGHT)
         screen.blit(title, (sw // 2 - title.get_width() // 2, 16))
-        screen.blit(sub,   (sw // 2 - sub.get_width() // 2,   16 + title.get_height() + 4))
 
         # ── colonne gauche — scénarios ────────────────────────────────────────
         lx  = PAD

@@ -1,52 +1,34 @@
 # systems/decision.py
 """
 Patrouille équidistante du périmètre.
-
-Rôle
-----
-Décide où chaque drone doit aller : écrit la cible de chaque drone vivant
-dans world.targets à chaque tick. C'est le seul système qui choisit une
-destination ; movement.py se charge ensuite d'y aller physiquement.
-
-Contrat
--------
-update(world, ctx, zone, dt)
-    entrées : world (état global), ctx (précalculs du tick : alive_ids,
-              distances, contacts ennemis), zone (polygone de patrouille), dt
-    effet   : world.targets[i] mis à jour pour tout drone vivant i,
-              mode EMERGENCY/ACTIVE basculé selon le contact ennemi
-    sans zone : repli en séparation simple type boids (tests sans frontière)
-
-Algorithme
-----------
-Chaque drone a une progression patrol_d : sa position cible exprimée en
-distance le long du périmètre (0 à P). La cible est zone.point_at(patrol_d),
+ 
+Rôle : écrit la cible de chaque drone vivant dans world.targets à chaque
+tick. C'est le seul système qui choisit une destination ; movement.py
+se charge ensuite d'y aller physiquement.
+ 
+Algorithme : chaque drone a une progression patrol_d, sa position cible en
+distance le long du périmètre (0 à P). Sa cible est zone.point_at(patrol_d),
 donc toujours exactement sur le polygone. À chaque tick toutes les
 progressions avancent du même incrément : l'écart entre drones reste
 constant, l'équidistance initiale (P/n) est conservée sans calcul de
 répulsion. À la mort d'un drone, les survivants sont ré-espacés une seule
 fois (_redistribute), puis l'avance commune reprend.
-
-La vitesse d'avance des cibles s'adapte au drone vivant le plus lent
-(coef_Patrouille_vitesse_maxmin x min des vitesses). On patrouille en
-dessous de la vitesse propre des drones, sinon ils n'ont pas le temps
-d'atteindre leur point sur le polygone et prennent les virages trop court.
-
-Justification (approches écartées)
-----------------------------------
-- Condition d'arrivée ("avance la cible si le drone est à moins de X") :
-  bloque les drones qui tournent mal, ils dépassent la cible et orbitent
-  sans jamais la valider. Ici la cible glisse en continu, rien à valider.
-- Cible pilotée par la projection de la position réelle : tous les drones
-  convergent au même point. La cible doit rester une consigne, pas une mesure.
-
-Paramètres
-----------
-coef_Patrouille_vitesse_maxmin : fraction de la vitesse du plus lent
-    utilisée comme vitesse de patrouille. 0.75 marche bien.
-    Plus haut : les drones coupent les virages. Plus bas : ils rattrapent
-    la cible et tournicotent derrière.
+ 
+La vitesse d'avance des cibles = coef_Patrouille_vitesse_maxmin (0.75) fois
+la vitesse du drone vivant le plus lent. On patrouille en dessous de la
+vitesse propre des drones, sinon ils n'ont pas le temps d'atteindre leur
+point et prennent les virages trop court. Coef plus haut : ils coupent les
+virages ; plus bas : ils rattrapent la cible et tournicotent derrière.
+ 
+Approches écartées : une condition d'arrivée ("avance si le drone est à
+moins de X") bloque les drones qui tournent mal — ils dépassent la cible et
+orbitent sans jamais la valider. Une cible pilotée par la position réelle
+fait converger tous les drones : la cible doit rester une consigne, pas une
+mesure.
+ 
+Sans zone : repli en séparation simple type boids (tests sans frontière).
 """
+ 
 
 import numpy as np
 from core.world import World
