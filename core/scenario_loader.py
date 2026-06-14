@@ -35,7 +35,8 @@ def load(path: str | Path) -> tuple[World, PatrolZone, CoverageMap]:
 
         # target initiale = légèrement en avance sur le progress initial
         lookahead = min(P / n * 0.4, 600.0)
-        world.targets[i] = zone.point_at((prog + lookahead) % P)
+        world.targets[drone.id] = zone.point_at((prog + lookahead) % P)
+
 
     # Ennemis fixes
     for enemy in data.get("enemies", []):

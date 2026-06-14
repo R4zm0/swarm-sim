@@ -30,7 +30,7 @@ if result["save_to_restore"] is not None:
 sim_state = {"paused": False, "speed": 1.0, "step": False}
 
 def sim_loop():
-    dt = 1 / 60
+    dt = 1 / 60 
     while True:
         if sim_state["step"]:
             scheduler.tick(world, dt)

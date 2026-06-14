@@ -22,20 +22,11 @@ import numpy as np
 
 class ComponentStore:
 
-    # Composants mutables — seront inclus dans save/load de mission
-    MUTABLE: frozenset[str] = frozenset({
-        "battery_level",
-        "jamming_level",
-        "signal_quality",
-        "sensor_efficiency",
-        "mode",
-        "messages",
-        "patrol_progress",
-    })
 
-    def __init__(self) -> None:
-        self._floats:  dict[str, np.ndarray] = {}   # scalaires float  (N,)
-        self._objects: dict[str, list]       = {}   # strings, enums, lists
+    def __init__(self, mutable: frozenset[str] | None = None) -> None:
+        self._floats:  dict[str, np.ndarray] = {}
+        self._objects: dict[str, list]       = {}
+        self.MUTABLE = mutable or frozenset()   # copie les mutables de world. 
         self._n = 0
 
     # ── Ajout d'un drone ──────────────────────────────────────────────────────
@@ -43,13 +34,14 @@ class ComponentStore:
     def push(self, data: dict) -> None:
         """
         Enregistre un nouveau drone avec toutes ses valeurs initiales.
-        data = config.model_dump() + état initial — tous les champs d'un coup.
+        data = config.model_dump() + état initial : tous les champs d'un coup.
         Crée le container au premier push si le champ n'existe pas encore.
         """
         for key, value in data.items():
             if self._is_numeric(value):
                 if key not in self._floats:
-                    # Backfill : les drones précédents ont 0 pour ce nouveau champ
+                    # Backfill : les drones précédents ont 0 pour ce nouveau champ, En pratique on rentre quasi jamais dans ce if
+                    # Sert uniquement à faire passer les test unitaires.
                     self._floats[key] = np.zeros(self._n, dtype=float)
                 self._floats[key] = np.append(self._floats[key], float(value))
             else:
@@ -67,17 +59,17 @@ class ComponentStore:
     # ── Accès ─────────────────────────────────────────────────────────────────
 
     def arr(self, name: str) -> np.ndarray:
-        """Array complet (N,) — pour les systèmes vectorisés (movement, battery...)."""
+        """Array complet (N,) : pour les systèmes vectorisés (movement, battery...)."""
         return self._floats[name]
 
     def get(self, name: str, i: int):
-        """Valeur d'un drone i — utilisé par le proxy Drone."""
+        """Valeur d'un drone i : utilisé par le proxy Drone."""
         if name in self._floats:
             return float(self._floats[name][i])
         return self._objects[name][i]
 
     def set(self, name: str, i: int, value) -> None:
-        """Écrit la valeur d'un drone i — utilisé par le proxy Drone."""
+        """Écrit la valeur d'un drone i : utilisé par le proxy Drone."""
         if name in self._floats:
             self._floats[name][i] = float(value)
         else:
@@ -91,7 +83,7 @@ class ComponentStore:
     def state_dict(self) -> dict:
         """
         Sérialise uniquement les composants mutables (état de mission).
-        Config immuable (speed, mass...) non incluse — rechargée depuis JSON au load.
+        Config immuable (speed, mass...) non incluse, rechargée depuis JSON au load.
         Les enums (DroneMode) sont convertis en string pour la sérialisation JSON.
         """
         result = {}

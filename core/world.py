@@ -30,36 +30,47 @@ class World:
     W = 19200
     H = 10800
 
-    # État initial d'un drone — fusionné avec config.model_dump() dans add_drone.
+    # État mutable initial d'un drone : fusionné avec config.model_dump() dans add_drone.
+    # Sépare l'état physique (vraies grandeurs du drone) de l'état de contrôleur et du réservé.
     _INITIAL_STATE: dict = {
-        "battery_level":     1.0,
-        "jamming_level":     0.0,
-        "signal_quality":    1.0,
-        "sensor_efficiency": 1.0,
-        "mode":              DroneMode.ACTIVE,
-        "patrol_progress":   0.0,
-        "messages":          [],
-        "team":              0,
+        # Vie/mort — lu chaque tick, pivot de l'alive_mask
+        "mode":              DroneMode.ACTIVE,  # tous démarrent actifs ; DEAD = retiré de la sim
+        # État de contrôleur, pas une grandeur physique : propre à decision.py et aux
+        # méthodes analytiques. Inutile pour une stratégie émergente (cf. fallback boids)
+        "patrol_progress":   0.0,               # abscisse sur le périmètre, assignée par decision.py
+                                                #   (le 0.0 crée juste la colonne ; loader l'écrase au spawn)
+        # Grandeurs physiques — consommées par movement / battery / detection ──
+        "battery_level":     1.0,               # niveau batterie [0→1] ; sous le seuil → DEAD
+        "sensor_efficiency": 1.0,               # multiplie le sensor_radius (rayon effectif)
+        # Réservé — câblé pour des systèmes pas encore branchés (EW / comms) ──
+        "jamming_level":     0.0,               # futur systems/ew.py (stub vide)
+        "signal_quality":    1.0,               # futur systems/comms.py (stub vide)
     }
 
     def __init__(self) -> None:
-        self.components    = ComponentStore()
+        self.components    =  ComponentStore(mutable=frozenset(self._INITIAL_STATE))
         self.drone_configs = load_drone_configs()
         self.drones: dict[int, Drone] = {}
         self._next_id = 0
 
-        # Vec2 arrays — shape (N, 2), hors ComponentStore
+        # Vec2 arrays : shape (N, 2), hors ComponentStore
         self.positions  = np.zeros((0, 2), dtype=float)
         self.velocities = np.zeros((0, 2), dtype=float)
         self.targets    = np.zeros((0, 2), dtype=float)
         self.alive_mask = np.zeros(0, dtype=bool)
 
-        # Ennemis fixes — pas dans le système de drones
+        # Ennemis fixes : pas dans le système de drones 
         self.enemy_positions = np.zeros((0, 2), dtype=float)
 
     # ── Ajout de drones ───────────────────────────────────────────────────────
 
     def add_drone(self, drone_type: str, position: np.ndarray | None = None, team: int = 0) -> Drone:
+        
+        if drone_type not in self.drone_configs:
+            raise KeyError(
+                f"Type de drone inconnu : '{drone_type}'. "
+                f"Types disponibles : {sorted(self.drone_configs)}"
+            )
         config   = self.drone_configs[drone_type]
         drone_id = self._next_id
 
@@ -83,7 +94,7 @@ class World:
     # ── Ajout d'ennemis ───────────────────────────────────────────────────────
 
     def add_enemy(self, position: np.ndarray) -> None:
-        """Ennemi fixe — position seulement, pas de comportement."""
+        """Ennemi fixe : position seulement, pas de comportement. -> à implémenter en tant que drone de team 1 et modifier decision .py et tout ce qiu bloque après"""
         pos = clamp_to_world(np.array(position, dtype=float), self.W, self.H)
         if len(self.enemy_positions) == 0:
             self.enemy_positions = np.array([pos], dtype=float)
