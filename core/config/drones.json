@@ -65,7 +65,7 @@
     "battery_steepness": 11.0,
 
     "power_idle":  0.01,   
-    "power_max_steer": 0.01
+    "power_max_steer": 0.015
   },
     "shahed": {
     "parent":       "_base",
@@ -82,8 +82,8 @@
     "battery_knee":      0.25,
     "battery_steepness": 11.0,
 
-    "power_idle":  0.01,   
-    "power_max_steer": 0.01
+    "power_idle":  0.001,   
+    "power_max_steer": 0.005
   }
 
 

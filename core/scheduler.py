@@ -12,7 +12,7 @@ Ordre d'un tick :
 """
 
 import numpy as np
-import systems.decision  as decision
+import systems.decision_extra  as decision
 import systems.movement  as movement
 import systems.battery   as battery
 import systems.detection as detection

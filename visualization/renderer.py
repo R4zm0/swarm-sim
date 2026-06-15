@@ -73,6 +73,7 @@ CONTROLS = [
     "fleche  : step",
     "S       : save",
     "L       : load",
+    "K       : Quitter"
 ]
 
 _BTN_W, _BTN_H = 32, 24
@@ -566,7 +567,7 @@ def run(
     drag_last        = (0, 0)
 
     _sim      = sim_state if sim_state is not None else {"paused": False, "speed": 1.0, "step": False}
-    state     = {"running": True, "debug": False}
+    state     = {"running": True, "debug": False, "outcome": "quit"}
     bar_rects = {}
 
     def minimap_rect(sw, sh, mm_w, mm_h):
@@ -610,6 +611,8 @@ def run(
         pygame.K_RIGHT:  lambda: _sim.update(step=True),
         pygame.K_s:      lambda: save_panel.toggle(_sim),
         pygame.K_l:      lambda: load_panel.toggle(_sim),
+        pygame.K_f:      lambda: state.update(running=False, outcome="end"),
+
     }
 
     def on_quit(e):        state["running"] = False
@@ -682,6 +685,9 @@ def run(
         sw, sh = screen.get_size()
         debug  = state["debug"]
 
+        if _sim.get("finished") or _sim.get("show_end"):
+            state.update(running=False, outcome="end")
+
         mm_w = int(sw * MINIMAP_RATIO_W)
         mm_h = int(sh * MINIMAP_RATIO_H)
         if mm_surf.get_size() != (mm_w, mm_h):
@@ -734,4 +740,4 @@ def run(
         pygame.display.flip()
         clock.tick(FPS)
 
-    pygame.quit()
+    return state["outcome"]
