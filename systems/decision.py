@@ -84,7 +84,7 @@ def _redistribute(world: World, alive_ids: np.ndarray, zone) -> None:
 def _patrol(world: World, ctx, zone, dt: float) -> None:
     """Fait glisser toutes les cibles, en redistribuant d'abord si un drone est mort."""
     alive_ids = ctx.alive_ids
-    n         = len(alive_ids)
+    n = len(alive_ids)
     if n == 0:
         return
 

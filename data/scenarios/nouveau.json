@@ -1,0 +1,73 @@
+{
+  "name": "nouveau",
+  "description": "",
+  "background": "export_carte_topo_saussines.png",
+  "spawn": [
+    12823.2,
+    8530.4
+  ],
+  "zone": {
+    "vertices": [
+      [
+        12823.2,
+        8530.4
+      ],
+      [
+        10968.1,
+        3521.7
+      ],
+      [
+        7258.0,
+        2014.5
+      ],
+      [
+        2805.8,
+        3313.0
+      ],
+      [
+        1669.6,
+        6489.9
+      ],
+      [
+        7211.6,
+        8089.9
+      ]
+    ]
+  },
+  "coverage": {
+    "n_samples": 600,
+    "decay": 0.003,
+    "threshold": 0.5
+  },
+  "drones": [
+    {
+      "type": "shahed",
+      "team": 0
+    },
+    {
+      "type": "shahed",
+      "team": 0
+    },
+    {
+      "type": "shahed",
+      "team": 0
+    },
+    {
+      "type": "shahed",
+      "team": 0
+    },
+    {
+      "type": "shahed",
+      "team": 0
+    },
+    {
+      "type": "shahed",
+      "team": 0
+    },
+    {
+      "type": "shahed",
+      "team": 0
+    }
+  ],
+  "enemies": []
+}

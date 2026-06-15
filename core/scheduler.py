@@ -55,7 +55,6 @@ class TickContext:
             distances=self.distances,
             alive_ids=self.alive_ids,
         )
-
         # ── Contact ennemis fixes ─────────────────────────────────────────────
         E = len(world.enemy_positions)
         if E > 0:
@@ -83,6 +82,8 @@ class Scheduler:
         ctx = TickContext(world) # donnée précalculés à chaque tick
 
         if ctx.alive_ids.size == 0:        # plus aucun drone vivant, on fait rien
+            # simulation terminé on fait rien
+            # todo un choix de fin de simulation : écriture d'une fin, ou d'un pop up de fin.
             return
         #1
         decision.update(world, ctx, self.zone, dt)
